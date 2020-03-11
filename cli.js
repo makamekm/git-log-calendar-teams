@@ -1,4 +1,4 @@
 #!/usr/bin/env node
 
-console.log('done');
-process.exit(0);
+require('dotenv').config();
+require('./index');

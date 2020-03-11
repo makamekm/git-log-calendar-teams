@@ -4,6 +4,10 @@
 
 # Build directory
 public/
+dist/
+
+output.pdf
+output.svg
 
 # Gatsby cache
 .cache/
