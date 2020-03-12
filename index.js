@@ -6,11 +6,10 @@ const d3 = d3n.d3
 let data = require('./data');
 data = data.sort((a, b) => new Date(a.Date) - new Date(b.Date));
 
-let minYear = 10000;
+let minYear = 100000;
 let maxYear = 0;
 
-const dateValues = data.map(dv => {
-  const date = new Date(dv.Date);
+const checkYear = (date) => {
   const year = date.getFullYear();
 
   if (year > maxYear) {
@@ -20,10 +19,14 @@ const dateValues = data.map(dv => {
   if (year < minYear) {
     minYear = year;
   }
+}
 
+const dateValues = data.map(dv => {
+  const date = new Date(dv.Date);
+  checkYear(date);
   return {
     date: d3.timeDay(date),
-    value: Number(dv.AnswerCount)
+    value: Number(dv.Value)
   };
 });
 
@@ -31,11 +34,12 @@ const yearGap = Math.abs(maxYear - minYear);
 
 const cellSize = 15;
 const yearHeight = cellSize * 7;
-const marginTop = cellSize * 1.5;
+const marginTop = cellSize * 0.5;
 const marginLeft = 50;
 const marginRight = 10;
+const weeksInYear = 53;
 
-const [ width, height ] = [marginLeft + cellSize * 54 + marginRight, yearHeight * (yearGap + 1) + 2 * marginTop];
+const [ width, height ] = [marginLeft + cellSize * (weeksInYear + 1) + marginRight, yearHeight * (yearGap + 1) + 2 * marginTop];
 const svg = d3n.createSVG(width, height);
 
 const years = d3
