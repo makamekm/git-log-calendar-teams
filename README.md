@@ -4,11 +4,10 @@ The tool generates git calendar logs depending on teams' activities
 ## How to run
 
 ```
-npm i dool -g
-npm i
+git-log-calendar-teams report clean collect
+```
 
-dool build
-dool server
-
-open http://localhost:8000
+or
+```
+git-log-calendar-teams
 ```
