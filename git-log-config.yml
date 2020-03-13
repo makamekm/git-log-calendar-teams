@@ -1,0 +1,20 @@
+branch: master
+cleanTmp: false
+tmpDir: "./repositories"
+repositories:
+  - url: https://github.com/makamekm/git-log-calendar-teams.git
+    branch: master
+  - url: https://github.com/makamekm/figma-react.git
+    branch: develop
+teams:
+  - grid:
+    users:
+      - makame
+    output:
+      "./team.svg"
+  - others:
+    invert: true
+    exclude:
+      - cicdTEMP
+    output:
+      "./others.svg"

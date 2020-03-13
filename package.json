@@ -46,10 +46,12 @@
     "d3": "^5.15.0",
     "d3-node": "^2.2.1",
     "dotenv": "^8.2.0",
+    "fs-extra": "^8.1.0",
     "git-tools": "^0.3.0",
     "node-fetch": "^2.6.0",
     "pdfkit": "^0.11.0",
-    "prettier": "^1.19.1"
+    "prettier": "^1.19.1",
+    "yaml": "^1.8.2"
   },
   "devDependencies": {
     "babel-eslint": "^10.0.3",

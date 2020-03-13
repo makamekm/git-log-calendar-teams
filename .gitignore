@@ -6,8 +6,9 @@
 public/
 dist/
 
-output.pdf
-output.svg
+*.pdf
+*.svg
+repositories/
 
 # Gatsby cache
 .cache/

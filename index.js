@@ -1,33 +1,129 @@
-const Repo = require('git-tools');
-const fs = require('fs');
+const Repo = require('./git-tools');
+const YAML = require('yaml');
+const path = require('path');
+const fs = {
+  ...require('fs'),
+  ...require('fs-extra')
+};
 const d3Node = require('d3-node');
-const d3n = new d3Node();
-const d3 = d3n.d3;
 
-const repo = new Repo('./');
-// repo.authors((error, authors) => {
-//   if (error) {
-//     console.error(error);
-//     process.exit(1);
-//   }
+module.exports = async function() {
+  const configPath = path.resolve(process.env.GIT_LOG_CONFIG_PATH || './git-log-config.yml');
+  const file = fs.readFileSync(configPath, 'utf8');
+  const config = YAML.parse(file);
 
-//   console.log(authors);
-// });
+  console.log(config);
 
-let data = require('./data');
-data = [];
+  const repositoriesPath = path.resolve(config.tmpDir);
 
-//  --author="\(Adam\)\|\(Jon\)"
+  fs.ensureDirSync(repositoriesPath);
 
-repo.activeDays('master', function(error, activeDays) {
-  if (error) {
-    console.error(error);
-    process.exit(1);
+  const dates = {};
+
+  for (let teamName in config.teams) {
+    dates[teamName] = {};
   }
 
-  console.log(activeDays);
-  for (let key in activeDays.dates) {
-    data.push({ Date: key, Value: activeDays.dates[key] });
+  let usedUsers = [];
+
+  for (let team of config.teams) {
+    team.users = team.users || [];
+    if (team.invert) {
+      team.users = usedUsers;
+    } else {
+      usedUsers = [...usedUsers, ...team.users];
+    }
+  }
+
+  for (let repository of config.repositories) {
+    const repositoryPath = path.resolve(repositoriesPath, repository.url.replace(/\W+/g, '-').toLowerCase());
+    let pathExist = fs.existsSync(repositoryPath);
+    let rep = new Repo(repositoryPath);
+
+    if (
+      config.cleanTmp ||
+      repository.cleanTmp ||
+      (pathExist &&
+        !(await new Promise((r, e) =>
+          rep.isRepo((error, rep) => {
+            if (error) {
+              e(error);
+            } else {
+              r(rep);
+            }
+          })
+        )))
+    ) {
+      fs.removeSync(repositoryPath);
+      pathExist = false;
+    }
+
+    if (!pathExist) {
+      rep = await new Promise((r, e) =>
+        Repo.clone(
+          {
+            repo: repository.url,
+            dir: repositoryPath,
+            branch: repository.branch || config.branch || 'master'
+          },
+          (error, rep) => {
+            if (error) {
+              e(error);
+            } else {
+              r(rep);
+            }
+          }
+        )
+      );
+    }
+
+    // rep.authors((error, authors) => {
+    //   console.log(authors);
+    // });
+
+    for (let teamName in config.teams) {
+      const team = config.teams[teamName];
+      const activeDays = await createGraph(rep, repository, team, config);
+      for (let key in activeDays) {
+        dates[teamName][key] = (dates[teamName][key] || 0) + activeDays[key];
+      }
+    }
+  }
+
+  for (let teamName in config.teams) {
+    const team = config.teams[teamName];
+    // let data = require('./data');
+    makeReport(dates[teamName], team, config);
+  }
+};
+
+async function createGraph(rep, repository, team, config) {
+  const branch = repository.branch || config.branch || 'master';
+  return await new Promise((r, e) =>
+    rep.activeDays(
+      branch,
+      author => {
+        author = author.toLowerCase();
+        const includes = team.users.includes(author);
+        const exclude = !team.exclude || !team.exclude.includes(author);
+        return (team.invert ? !includes : includes) && exclude;
+      },
+      (error, activeDays) => {
+        if (error) {
+          e(error);
+        } else {
+          r(activeDays.dates);
+        }
+      }
+    )
+  );
+}
+
+function makeReport(dates, team, config) {
+  let data = [];
+
+  for (let key in dates) {
+    data.push({ Date: key, Value: dates[key] });
   }
 
   data = data.sort((a, b) => new Date(a.Date) - new Date(b.Date));
@@ -46,6 +142,9 @@ repo.activeDays('master', function(error, activeDays) {
       minYear = year;
     }
   };
+
+  const d3n = new d3Node();
+  const d3 = d3n.d3;
 
   const dateValues = data.map(dv => {
     const date = new Date(dv.Date);
@@ -102,7 +201,6 @@ repo.activeDays('master', function(error, activeDays) {
   const timeWeek = d3.utcSunday;
   const formatDate = d3.utcFormat('%x');
   const colorFn = d3.scaleSequential(d3.interpolateBuGn).domain([Math.floor(minValue), Math.ceil(maxValue)]);
-  const format = d3.format('+.2%');
 
   year
     .append('g')
@@ -129,23 +227,8 @@ repo.activeDays('master', function(error, activeDays) {
     .append('title')
     .text(d => `${formatDate(d.date)}: ${d.value.toFixed(2)}`);
 
-  // const legend = group.append('g').attr('transform', `translate(10, ${years.length * yearHeight + cellSize * 4})`);
-
-  // const categoriesCount = 10;
-  // const categories = [...Array(categoriesCount)].map((_, i) => {
-  //   const upperBound = (maxValue / categoriesCount) * (i + 1);
-  //   const lowerBound = (maxValue / categoriesCount) * i;
-
-  //   return {
-  //     upperBound,
-  //     lowerBound,
-  //     color: d3.interpolateBuGn(upperBound / maxValue),
-  //     selected: true
-  //   };
-  // });
-
-  fs.writeFileSync('output.svg', d3n.svgString());
-});
+  fs.writeFileSync(path.resolve(team.output), d3n.svgString());
+}
 
 // const PDFDocument = require('pdfkit');
 
