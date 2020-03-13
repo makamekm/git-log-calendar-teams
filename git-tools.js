@@ -53,12 +53,7 @@ Repo.prototype.exec = async function() {
 
 Repo.prototype.activeDays = async function(checkAuthor, ...committish) {
   const dates = await this.exec('log', '--format="%at %ae %an"', '--all', '--no-merges', ...committish);
-  const dateMap = {
-    activeDays: 0,
-    commits: 0,
-    dates: {},
-    years: {}
-  };
+  const dateMap = {};
 
   dates
     .split('\n')
@@ -79,39 +74,10 @@ Repo.prototype.activeDays = async function(checkAuthor, ...committish) {
 
       date = year + '-' + (month < 10 ? '0' : '') + month + '-' + (day < 10 ? '0' : '') + day;
 
-      if (!dateMap.dates[date]) {
-        dateMap.dates[date] = 0;
+      if (!dateMap[date]) {
+        dateMap[date] = 0;
       }
-      dateMap.commits++;
-      dateMap.dates[date]++;
-
-      if (!dateMap.years[year]) {
-        dateMap.years[year] = {
-          activeDays: 0,
-          commits: 0,
-          months: {}
-        };
-      }
-      dateMap.years[year].commits++;
-
-      if (!dateMap.years[year].months[month]) {
-        dateMap.years[year].months[month] = {
-          activeDays: 0,
-          commits: 0,
-          days: {}
-        };
-      }
-      dateMap.years[year].months[month].commits++;
-
-      if (!dateMap.years[year].months[month].days[day]) {
-        dateMap.years[year].months[month].days[day] = {
-          commits: 0
-        };
-        dateMap.activeDays++;
-        dateMap.years[year].activeDays++;
-        dateMap.years[year].months[month].activeDays++;
-      }
-      dateMap.years[year].months[month].days[day].commits++;
+      dateMap[date]++;
     });
 
   return dateMap;

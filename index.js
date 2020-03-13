@@ -1,4 +1,4 @@
-const Repo = require('./git-tools');
+const GitRepository = require('./git-tools');
 const YAML = require('yaml');
 const path = require('path');
 const fs = {
@@ -53,15 +53,15 @@ async function collect() {
       const repositoryName = getRepositoryName(repository);
       const repositoryPath = path.resolve(tmpDir, repositoryName);
       let pathExist = fs.existsSync(repositoryPath);
-      let rep = new Repo(repositoryPath);
+      let gitRepository = new GitRepository(repositoryPath);
 
-      if (config.cleanTmp || repository.cleanTmp || (pathExist && !(await rep.isRepo()))) {
+      if (config.cleanTmp || repository.cleanTmp || (pathExist && !(await gitRepository.isRepo()))) {
         fs.removeSync(repositoryPath);
         pathExist = false;
       }
 
       if (!pathExist) {
-        rep = await Repo.clone({
+        gitRepository = await GitRepository.clone({
           repo: repository.url,
           dir: repositoryPath,
           branch: getBranchName(repository, config)
@@ -69,7 +69,7 @@ async function collect() {
       }
 
       for (let team of config.teams) {
-        const activeDays = await getActiveDays(rep, repository, team, config);
+        const activeDays = await getActiveDays(gitRepository, repository, team, config);
         if (Object.keys(activeDays).length > 0) {
           const repositoryStatsFileName = `${repositoryName}${DIVIDER}${team.name}${DIVIDER}${Date.now().toString()}.json`;
           fs.writeFileSync(path.resolve(config.dataDir, repositoryStatsFileName), JSON.stringify(activeDays, null, 4));
@@ -145,8 +145,8 @@ async function report() {
   }
 }
 
-async function getActiveDays(rep, repository, team, config) {
-  return await rep.activeDays((email, author) => {
+async function getActiveDays(gitRepository, repository, team, config) {
+  return await gitRepository.activeDays((email, author) => {
     author = author.toLowerCase();
     email = email.toLowerCase();
     const includes = team.users.includes(author) || team.users.includes(email);
@@ -157,6 +157,8 @@ async function getActiveDays(rep, repository, team, config) {
 }
 
 function makeReport(dates, team, config) {
+  const output = path.resolve(config.outputDir, team.output);
+
   let data = [];
 
   for (let key in dates) {
@@ -166,7 +168,7 @@ function makeReport(dates, team, config) {
 
   data = data.sort((a, b) => new Date(a.Date) - new Date(b.Date));
 
-  let minYear = 100000;
+  let minYear = Infinity;
   let maxYear = 0;
 
   const checkYear = date => {
@@ -193,6 +195,11 @@ function makeReport(dates, team, config) {
     };
   });
 
+  if (maxYear === 0) {
+    fs.removeSync(output);
+    return;
+  }
+
   const yearGap = Math.abs(maxYear - minYear);
 
   const cellSize = 15;
@@ -203,6 +210,7 @@ function makeReport(dates, team, config) {
   const weeksInYear = 53;
 
   const [width, height] = [marginLeft + cellSize * (weeksInYear + 1) + marginRight, yearHeight * (yearGap + 1) + 2 * marginTop];
+  
   const svg = d3n.createSVG(width, height);
 
   const years = d3
@@ -265,7 +273,7 @@ function makeReport(dates, team, config) {
     .append('title')
     .text(d => `${formatDate(d.date)}: ${d.value.toFixed(2)}`);
 
-  fs.writeFileSync(path.resolve(config.outputDir, team.output), d3n.svgString());
+  fs.writeFileSync(output, d3n.svgString());
 }
 
 // const PDFDocument = require('pdfkit');
