@@ -1,14 +1,14 @@
-var spawn = require('spawnback');
+const spawn = require('spawnback');
 
-function Repo(path) {
+function GitRepository(path) {
   this.path = path;
 }
 
-Repo.parsePerson = (function() {
-  var rPerson = /^(\S+)\s(.+)$/;
+GitRepository.parsePerson = (function() {
+  const rPerson = /^(\S+)\s(.+)$/;
 
   return function(person) {
-    var matches = rPerson.exec(person);
+    const matches = rPerson.exec(person);
     return {
       email: matches[1],
       name: matches[2]
@@ -16,7 +16,9 @@ Repo.parsePerson = (function() {
   };
 })();
 
-Repo.clone = async function(options) {
+GitRepository.clone = async function(options) {
+  const repo = new GitRepository(options.dir);
+
   const args = ['clone', options.repo];
   options = { ...options };
   delete options.repo;
@@ -30,28 +32,24 @@ Repo.clone = async function(options) {
     }
   });
 
-  const repo = new Repo(dir);
-  await repo.exec(args);
+  args.push('.');
+
+  await repo.exec(...args);
   return repo;
 };
 
-Repo.prototype.exec = async function() {
-  var args = [].slice.call(arguments);
+GitRepository.prototype.exec = async function(...args) {
   return new Promise((r, e) =>
     spawn('git', args, { cwd: this.path }, (error, stdout) => {
       if (error) {
         return e(error);
       }
-
-      // Remove trailing newline
-      stdout = stdout.replace(/\n$/, '');
-
-      r(stdout);
+      r(stdout.replace(/\n$/, ''));
     })
   );
 };
 
-Repo.prototype.activeDays = async function(checkAuthor, ...args) {
+GitRepository.prototype.activeDays = async function(checkAuthor, ...args) {
   const dates = await this.exec('log', '--format="%at %ae %an"', '--all', '--no-merges', ...args);
   const dateMap = {};
 
@@ -67,10 +65,10 @@ Repo.prototype.activeDays = async function(checkAuthor, ...args) {
         return;
       }
 
-      var date = new Date(timestamp * 1000);
-      var year = date.getFullYear();
-      var month = date.getMonth() + 1;
-      var day = date.getDate();
+      let date = new Date(timestamp * 1000);
+      const year = date.getFullYear();
+      const month = date.getMonth() + 1;
+      const day = date.getDate();
 
       date = year + '-' + (month < 10 ? '0' : '') + month + '-' + (day < 10 ? '0' : '') + day;
 
@@ -83,17 +81,17 @@ Repo.prototype.activeDays = async function(checkAuthor, ...args) {
   return dateMap;
 };
 
-Repo.prototype.age = async function() {
+GitRepository.prototype.age = async function() {
   const data = await this.exec('log', '--reverse', '--format=%cr');
   return data.split('\n')[0].replace(/\sago/, '');
 };
 
-Repo.prototype.remote = async function() {
+GitRepository.prototype.remote = async function() {
   await this.exec('remote');
   await this.fetch();
 };
 
-Repo.prototype.checkout = async function(branch) {
+GitRepository.prototype.checkout = async function(branch) {
   await this.remote();
   await this.reset();
   const branches = await this.localBranches();
@@ -105,32 +103,31 @@ Repo.prototype.checkout = async function(branch) {
   await this.pull();
 };
 
-Repo.prototype.localBranches = async function() {
+GitRepository.prototype.localBranches = async function() {
   const data = await this.exec('branch', '--list');
   return data.split('\n').map(s => s.replace(/\*/gi, '').trim());
 };
 
-Repo.prototype.fetch = async function() {
+GitRepository.prototype.fetch = async function() {
   await this.exec('fetch', 'origin');
 };
 
-Repo.prototype.pull = async function() {
+GitRepository.prototype.pull = async function() {
   await this.exec('pull', '--force');
 };
 
-Repo.prototype.reset = async function() {
+GitRepository.prototype.reset = async function() {
   await this.exec('reset', '--hard', 'HEAD');
 };
 
-Repo.prototype.authors = async function(...args) {
+GitRepository.prototype.authors = async function(...args) {
   const data = await this.exec('log', '--format=%aE %aN', ...args);
 
-  // Logs on a boundary commit will have no output
-  var authors = data.length ? data.split('\n') : [];
-  var authorMap = {};
-  var totalCommits = 0;
+  let authors = data.length ? data.split('\n') : [];
+  const authorMap = {};
+  let totalCommits = 0;
 
-  authors.forEach(function(author) {
+  authors.forEach(author => {
     if (!authorMap[author]) {
       authorMap[author] = 0;
     }
@@ -140,21 +137,21 @@ Repo.prototype.authors = async function(...args) {
   });
 
   authors = Object.keys(authorMap)
-    .map(function(author) {
-      var commits = authorMap[author];
-      return Object.keys(Repo.parsePerson(author), {
-        commits: commits,
+    .map(author => {
+      const commits = authorMap[author];
+      return Object.keys(GitRepository.parsePerson(author), {
+        commits,
         commitsPercent: ((commits * 100) / totalCommits).toFixed(1)
       });
     })
-    .sort(function(a, b) {
+    .sort((a, b) => {
       return b.commits - a.commits;
     });
 
   return authors;
 };
 
-Repo.prototype.isRepo = async function() {
+GitRepository.prototype.isGitRepository = async function() {
   try {
     await this.exec('rev-parse', '--git-dir');
     return true;
@@ -172,4 +169,4 @@ Repo.prototype.isRepo = async function() {
   }
 };
 
-module.exports = Repo;
+module.exports = GitRepository;
