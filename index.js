@@ -92,14 +92,9 @@ async function collectRepos() {
       console.error(err);
     }
   }
-
-  await cleanReportFolder();
-  await makeReports();
 }
 
-async function cleanReportFolder() {
-  const config = getConfig();
-
+function readStatsFolder(config) {
   let toRemove = [];
   const fileMap = {};
   for (let file of fs.readdirSync(config.dataDir)) {
@@ -120,6 +115,12 @@ async function cleanReportFolder() {
       }
     }
   }
+  return { fileMap, toRemove };
+}
+
+async function cleanReportFolder() {
+  const config = getConfig();
+  const { toRemove } = readStatsFolder(config);
   for (let file of toRemove) {
     fs.removeSync(file);
   }
@@ -133,22 +134,7 @@ async function makeReports() {
     dates[team.name] = {};
   }
 
-  const fileMap = {};
-  fs.readdirSync(config.dataDir).forEach(file => {
-    if (file.includes('.json') && file.includes('-_-')) {
-      let [repositoryName, team, timestamp] = file.split('-_-');
-      timestamp = Number.parseInt(timestamp, 10);
-      const fileKey = repositoryName + '-_-' + team;
-      if (!fileMap[fileKey] || fileMap[fileKey].timestamp < timestamp) {
-        fileMap[fileKey] = {
-          repositoryName,
-          file,
-          team,
-          timestamp
-        };
-      }
-    }
-  });
+  const { fileMap } = readStatsFolder(config);
 
   for (let repository of config.repositories) {
     try {
@@ -305,7 +291,7 @@ function makeReport(dates, team, config) {
     .append('title')
     .text(d => `${formatDate(d.date)}: ${d.value.toFixed(2)}`);
 
-  fs.writeFileSync(path.resolve(team.output), d3n.svgString());
+  fs.writeFileSync(path.resolve(config.outputDir, team.output), d3n.svgString());
 }
 
 // const PDFDocument = require('pdfkit');

@@ -1,6 +1,7 @@
 branch: master
 cleanTmp: false
 tmpDir: "./repositories"
+outputDir: "./"
 dataDir: "./"
 repositories:
   - url: https://github.com/makamekm/git-log-calendar-teams.git
@@ -18,11 +19,9 @@ teams:
       - makame@mail.ru
     exclude:
       - cicd
-    output:
-      "./team.svg"
+    output: "team.svg"
   - name: others
     invert: true
     exclude:
       - cicd
-    output:
-      "./others.svg"
+    output: "others.svg"
