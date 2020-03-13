@@ -94,7 +94,7 @@ function readStatsFolder(config) {
       const fileKey = repositoryName + DIVIDER + team;
       if (!fileMap[fileKey] || fileMap[fileKey].timestamp < timestamp) {
         if (fileMap[fileKey]) {
-          toRemove.push(file);
+          toRemove.push(fileMap[fileKey].file);
         }
         fileMap[fileKey] = {
           repositoryName,
@@ -102,6 +102,9 @@ function readStatsFolder(config) {
           team,
           timestamp
         };
+      } else {
+          toRemove.push(file);
+        }
       }
     }
   }
