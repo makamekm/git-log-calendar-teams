@@ -25,7 +25,7 @@ function getRepositoryName(repository) {
   return repository.url.replace(/\W+/g, '-').toLowerCase();
 }
 
-function getUnusedUsers(config) {
+function collectUnusedUsers(config) {
   let usedUsers = [];
   for (let team of config.teams) {
     team.users = team.users || [];
@@ -44,7 +44,7 @@ function getBranchName(repository, config) {
 
 async function collect() {
   const config = getConfig();
-  getUnusedUsers(config);
+  collectUnusedUsers(config);
   const tmpDir = path.resolve(config.tmpDir);
   fs.ensureDirSync(tmpDir);
 
@@ -66,6 +66,8 @@ async function collect() {
           dir: repositoryPath,
           branch: getBranchName(repository, config)
         });
+      } else {
+        await gitRepository.checkout(getBranchName(repository, config));
       }
 
       for (let team of config.teams) {
@@ -210,7 +212,7 @@ function makeReport(dates, team, config) {
   const weeksInYear = 53;
 
   const [width, height] = [marginLeft + cellSize * (weeksInYear + 1) + marginRight, yearHeight * (yearGap + 1) + 2 * marginTop];
-  
+
   const svg = d3n.createSVG(width, height);
 
   const years = d3

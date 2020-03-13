@@ -51,8 +51,8 @@ Repo.prototype.exec = async function() {
   );
 };
 
-Repo.prototype.activeDays = async function(checkAuthor, ...committish) {
-  const dates = await this.exec('log', '--format="%at %ae %an"', '--all', '--no-merges', ...committish);
+Repo.prototype.activeDays = async function(checkAuthor, ...args) {
+  const dates = await this.exec('log', '--format="%at %ae %an"', '--all', '--no-merges', ...args);
   const dateMap = {};
 
   dates
@@ -88,8 +88,42 @@ Repo.prototype.age = async function() {
   return data.split('\n')[0].replace(/\sago/, '');
 };
 
-Repo.prototype.authors = async function(...committish) {
-  const data = await this.exec('log', '--format=%aE %aN', ...committish);
+Repo.prototype.remote = async function() {
+  await this.exec('remote');
+  await this.fetch();
+};
+
+Repo.prototype.checkout = async function(branch) {
+  await this.remote();
+  await this.reset();
+  const branches = await this.localBranches();
+  if (branches.includes(branch)) {
+    await this.exec('checkout', `${branch}`);
+  } else {
+    await this.exec('checkout', '-b', `${branch}`, `origin/${branch}`);
+  }
+  await this.pull();
+};
+
+Repo.prototype.localBranches = async function() {
+  const data = await this.exec('branch', '--list');
+  return data.split('\n').map(s => s.replace(/\*/gi, '').trim());
+};
+
+Repo.prototype.fetch = async function() {
+  await this.exec('fetch', 'origin');
+};
+
+Repo.prototype.pull = async function() {
+  await this.exec('pull', '--force');
+};
+
+Repo.prototype.reset = async function() {
+  await this.exec('reset', '--hard', 'HEAD');
+};
+
+Repo.prototype.authors = async function(...args) {
+  const data = await this.exec('log', '--format=%aE %aN', ...args);
 
   // Logs on a boundary commit will have no output
   var authors = data.length ? data.split('\n') : [];
