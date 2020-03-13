@@ -7,10 +7,12 @@ const fs = {
 };
 const d3Node = require('d3-node');
 
+const DIVIDER = '-_-';
+
 module.exports = {
-  collectRepos,
-  cleanReportFolder,
-  makeReports
+  collect,
+  clean,
+  report
 };
 
 function getConfig() {
@@ -19,15 +21,12 @@ function getConfig() {
   return YAML.parse(file);
 }
 
-async function collectRepos() {
-  const config = getConfig();
+function getRepositoryName(repository) {
+  return repository.url.replace(/\W+/g, '-').toLowerCase();
+}
 
-  const repositoriesPath = path.resolve(config.tmpDir);
-
-  fs.ensureDirSync(repositoriesPath);
-
+function getUnusedUsers(config) {
   let usedUsers = [];
-
   for (let team of config.teams) {
     team.users = team.users || [];
     if (team.invert) {
@@ -36,55 +35,43 @@ async function collectRepos() {
       usedUsers = [...usedUsers, ...team.users];
     }
   }
+  return usedUsers;
+}
+
+function getBranchName(repository, config) {
+  return repository.branch || config.branch || 'master';
+}
+
+async function collect() {
+  const config = getConfig();
+  getUnusedUsers(config);
+  const tmpDir = path.resolve(config.tmpDir);
+  fs.ensureDirSync(tmpDir);
 
   for (let repository of config.repositories) {
     try {
-      const repositoryName = repository.url.replace(/\W+/g, '-').toLowerCase();
-      const repositoryPath = path.resolve(repositoriesPath, repositoryName);
+      const repositoryName = getRepositoryName(repository);
+      const repositoryPath = path.resolve(tmpDir, repositoryName);
       let pathExist = fs.existsSync(repositoryPath);
       let rep = new Repo(repositoryPath);
 
-      if (
-        config.cleanTmp ||
-        repository.cleanTmp ||
-        (pathExist &&
-          !(await new Promise((r, e) =>
-            rep.isRepo((error, rep) => {
-              if (error) {
-                e(error);
-              } else {
-                r(rep);
-              }
-            })
-          )))
-      ) {
+      if (config.cleanTmp || repository.cleanTmp || (pathExist && !(await rep.isRepo()))) {
         fs.removeSync(repositoryPath);
         pathExist = false;
       }
 
       if (!pathExist) {
-        rep = await new Promise((r, e) =>
-          Repo.clone(
-            {
-              repo: repository.url,
-              dir: repositoryPath,
-              branch: repository.branch || config.branch || 'master'
-            },
-            (error, rep) => {
-              if (error) {
-                e(error);
-              } else {
-                r(rep);
-              }
-            }
-          )
-        );
+        rep = await Repo.clone({
+          repo: repository.url,
+          dir: repositoryPath,
+          branch: getBranchName(repository, config)
+        });
       }
 
       for (let team of config.teams) {
         const activeDays = await getActiveDays(rep, repository, team, config);
         if (Object.keys(activeDays).length > 0) {
-          const repositoryStatsFileName = `${repositoryName}-_-${team.name}-_-${Date.now().toString()}.json`;
+          const repositoryStatsFileName = `${repositoryName}${DIVIDER}${team.name}${DIVIDER}${Date.now().toString()}.json`;
           fs.writeFileSync(path.resolve(config.dataDir, repositoryStatsFileName), JSON.stringify(activeDays, null, 4));
         }
       }
@@ -98,10 +85,10 @@ function readStatsFolder(config) {
   let toRemove = [];
   const fileMap = {};
   for (let file of fs.readdirSync(config.dataDir)) {
-    if (file.includes('.json') && file.includes('-_-')) {
-      let [repositoryName, team, timestamp] = file.split('-_-');
+    if (file.includes('.json') && file.includes(DIVIDER)) {
+      let [repositoryName, team, timestamp] = file.split(DIVIDER);
       timestamp = Number.parseInt(timestamp, 10);
-      const fileKey = repositoryName + '-_-' + team;
+      const fileKey = repositoryName + DIVIDER + team;
       if (!fileMap[fileKey] || fileMap[fileKey].timestamp < timestamp) {
         if (fileMap[fileKey]) {
           toRemove.push(file);
@@ -118,7 +105,7 @@ function readStatsFolder(config) {
   return { fileMap, toRemove };
 }
 
-async function cleanReportFolder() {
+async function clean() {
   const config = getConfig();
   const { toRemove } = readStatsFolder(config);
   for (let file of toRemove) {
@@ -126,7 +113,7 @@ async function cleanReportFolder() {
   }
 }
 
-async function makeReports() {
+async function report() {
   const config = getConfig();
 
   const dates = {};
@@ -138,11 +125,11 @@ async function makeReports() {
 
   for (let repository of config.repositories) {
     try {
-      const repositoryName = repository.url.replace(/\W+/g, '-').toLowerCase();
+      const repositoryName = getRepositoryName(repository);
       for (let team of config.teams) {
-        const fileKey = repositoryName + '-_-' + team.name;
+        const fileKey = repositoryName + DIVIDER + team.name;
         if (fileMap[fileKey]) {
-          const activeDays = JSON.parse(fs.readFileSync(path.resolve(config.dataDir, fileMap[fileKey].file)));
+          const activeDays = JSON.parse(fs.readFileSync(path.resolve(config.dataDir, fileMap[fileKey].file), 'utf8'));
           for (let key in activeDays) {
             dates[team.name][key] = (dates[team.name][key] || 0) + activeDays[key];
           }
@@ -159,27 +146,14 @@ async function makeReports() {
 }
 
 async function getActiveDays(rep, repository, team, config) {
-  const branch = repository.branch || config.branch || 'master';
-  return await new Promise((r, e) =>
-    rep.activeDays(
-      branch,
-      (email, author) => {
-        author = author.toLowerCase();
-        email = email.toLowerCase();
-        const includes = team.users.includes(author) || team.users.includes(email);
-        const exclude = team.exclude && (team.exclude.includes(author) || team.exclude.includes(email));
-        const excludeRepository = repository.exclude && (repository.exclude.includes(author) || repository.exclude.includes(email));
-        return (team.invert ? !includes : includes) && (!team.exclude || !exclude) && (!repository.exclude || !excludeRepository);
-      },
-      (error, activeDays) => {
-        if (error) {
-          e(error);
-        } else {
-          r(activeDays.dates);
-        }
-      }
-    )
-  );
+  return await rep.activeDays((email, author) => {
+    author = author.toLowerCase();
+    email = email.toLowerCase();
+    const includes = team.users.includes(author) || team.users.includes(email);
+    const exclude = team.exclude && (team.exclude.includes(author) || team.exclude.includes(email));
+    const excludeRepository = repository.exclude && (repository.exclude.includes(author) || repository.exclude.includes(email));
+    return (team.invert ? !includes : includes) && (!team.exclude || !exclude) && (!repository.exclude || !excludeRepository);
+  }, getBranchName(repository, config));
 }
 
 function makeReport(dates, team, config) {

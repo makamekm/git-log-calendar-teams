@@ -1,22 +1,22 @@
 #!/usr/bin/env node
 
 require('dotenv').config();
-const { collectRepos, cleanReportFolder, makeReports } = require('./index');
+const { collect, clean, report } = require('./index');
 
 const args = process.argv.slice(2);
 
 const fns = [];
 
 if ((!args.includes('report') && !args.includes('clean')) || args.includes('collect')) {
-  fns.push(collectRepos);
+  fns.push(collect);
 }
 
 if (args.includes('clean')) {
-  fns.push(cleanReportFolder);
+  fns.push(clean);
 }
 
 if (args.includes('report')) {
-  fns.push(makeReports);
+  fns.push(report);
 }
 
 (async function() {
