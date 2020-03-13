@@ -1,20 +1,28 @@
 branch: master
-cleanTmp: true
+cleanTmp: false
 tmpDir: "./repositories"
+dataDir: "./"
 repositories:
   - url: https://github.com/makamekm/git-log-calendar-teams.git
     branch: master
+    exclude:
+      - cicd
   - url: https://github.com/makamekm/figma-react.git
     branch: develop
+    exclude:
+      - cicd
 teams:
-  - grid:
+  - name: grid
     users:
       - makame
+      - makame@mail.ru
+    exclude:
+      - cicd
     output:
       "./team.svg"
-  - others:
+  - name: others
     invert: true
     exclude:
-      - cicdTEMP
+      - cicd
     output:
       "./others.svg"

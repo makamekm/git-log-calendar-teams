@@ -8,6 +8,7 @@ dist/
 
 *.pdf
 *.svg
+*.json
 repositories/
 
 # Gatsby cache

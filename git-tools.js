@@ -82,7 +82,7 @@ Repo.prototype.activeDays = function(committish, checkAuthor, callback) {
     committish = 'master';
   }
 
-  this.exec('log', '--format="%at %an"', '--all', '--no-merges', committish, function(error, dates) {
+  this.exec('log', '--format="%at %ae %an"', '--all', '--no-merges', committish, function(error, dates) {
     if (error) {
       return callback(error);
     }
@@ -99,10 +99,12 @@ Repo.prototype.activeDays = function(committish, checkAuthor, callback) {
       .sort()
       .forEach(function(line) {
         line = line.replace(/\"/gi, '');
-        const [timestamp, author] = line.split(' ');
-        if (!timestamp || !(checkAuthor && checkAuthor(author))) {
+        let [timestamp, email, ...author] = line.split(' ');
+        author = author.join(' ').replace(/\"/gi, '');
+        if (!timestamp || !(checkAuthor && checkAuthor(email, author))) {
           return;
         }
+
         var date = new Date(timestamp * 1000);
         var year = date.getFullYear();
         var month = date.getMonth() + 1;

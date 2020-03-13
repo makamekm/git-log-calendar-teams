@@ -7,22 +7,24 @@ const fs = {
 };
 const d3Node = require('d3-node');
 
-module.exports = async function() {
+module.exports = {
+  collectRepos,
+  cleanReportFolder,
+  makeReports
+};
+
+function getConfig() {
   const configPath = path.resolve(process.env.GIT_LOG_CONFIG_PATH || './git-log-config.yml');
   const file = fs.readFileSync(configPath, 'utf8');
-  const config = YAML.parse(file);
+  return YAML.parse(file);
+}
 
-  console.log(config);
+async function collectRepos() {
+  const config = getConfig();
 
   const repositoriesPath = path.resolve(config.tmpDir);
 
   fs.ensureDirSync(repositoriesPath);
-
-  const dates = {};
-
-  for (let teamName in config.teams) {
-    dates[teamName] = {};
-  }
 
   let usedUsers = [];
 
@@ -36,77 +38,152 @@ module.exports = async function() {
   }
 
   for (let repository of config.repositories) {
-    const repositoryPath = path.resolve(repositoriesPath, repository.url.replace(/\W+/g, '-').toLowerCase());
-    let pathExist = fs.existsSync(repositoryPath);
-    let rep = new Repo(repositoryPath);
+    try {
+      const repositoryName = repository.url.replace(/\W+/g, '-').toLowerCase();
+      const repositoryPath = path.resolve(repositoriesPath, repositoryName);
+      let pathExist = fs.existsSync(repositoryPath);
+      let rep = new Repo(repositoryPath);
 
-    if (
-      config.cleanTmp ||
-      repository.cleanTmp ||
-      (pathExist &&
-        !(await new Promise((r, e) =>
-          rep.isRepo((error, rep) => {
-            if (error) {
-              e(error);
-            } else {
-              r(rep);
+      if (
+        config.cleanTmp ||
+        repository.cleanTmp ||
+        (pathExist &&
+          !(await new Promise((r, e) =>
+            rep.isRepo((error, rep) => {
+              if (error) {
+                e(error);
+              } else {
+                r(rep);
+              }
+            })
+          )))
+      ) {
+        fs.removeSync(repositoryPath);
+        pathExist = false;
+      }
+
+      if (!pathExist) {
+        rep = await new Promise((r, e) =>
+          Repo.clone(
+            {
+              repo: repository.url,
+              dir: repositoryPath,
+              branch: repository.branch || config.branch || 'master'
+            },
+            (error, rep) => {
+              if (error) {
+                e(error);
+              } else {
+                r(rep);
+              }
             }
-          })
-        )))
-    ) {
-      fs.removeSync(repositoryPath);
-      pathExist = false;
+          )
+        );
+      }
+
+      for (let team of config.teams) {
+        const activeDays = await getActiveDays(rep, repository, team, config);
+        if (Object.keys(activeDays).length > 0) {
+          const repositoryStatsFileName = `${repositoryName}-_-${team.name}-_-${Date.now().toString()}.json`;
+          fs.writeFileSync(path.resolve(config.dataDir, repositoryStatsFileName), JSON.stringify(activeDays, null, 4));
+        }
+      }
+    } catch (err) {
+      console.error(err);
     }
+  }
 
-    if (!pathExist) {
-      rep = await new Promise((r, e) =>
-        Repo.clone(
-          {
-            repo: repository.url,
-            dir: repositoryPath,
-            branch: repository.branch || config.branch || 'master'
-          },
-          (error, rep) => {
-            if (error) {
-              e(error);
-            } else {
-              r(rep);
-            }
-          }
-        )
-      );
-    }
+  await cleanReportFolder();
+  await makeReports();
+}
 
-    // rep.authors((error, authors) => {
-    //   console.log(authors);
-    // });
+async function cleanReportFolder() {
+  const config = getConfig();
 
-    for (let teamName in config.teams) {
-      const team = config.teams[teamName];
-      const activeDays = await createGraph(rep, repository, team, config);
-      for (let key in activeDays) {
-        dates[teamName][key] = (dates[teamName][key] || 0) + activeDays[key];
+  let toRemove = [];
+  const fileMap = {};
+  for (let file of fs.readdirSync(config.dataDir)) {
+    if (file.includes('.json') && file.includes('-_-')) {
+      let [repositoryName, team, timestamp] = file.split('-_-');
+      timestamp = Number.parseInt(timestamp, 10);
+      const fileKey = repositoryName + '-_-' + team;
+      if (!fileMap[fileKey] || fileMap[fileKey].timestamp < timestamp) {
+        if (fileMap[fileKey]) {
+          toRemove.push(file);
+        }
+        fileMap[fileKey] = {
+          repositoryName,
+          file,
+          team,
+          timestamp
+        };
       }
     }
   }
-
-  for (let teamName in config.teams) {
-    const team = config.teams[teamName];
-    // let data = require('./data');
-    makeReport(dates[teamName], team, config);
+  for (let file of toRemove) {
+    fs.removeSync(file);
   }
-};
+}
 
-async function createGraph(rep, repository, team, config) {
+async function makeReports() {
+  const config = getConfig();
+
+  const dates = {};
+  for (let team of config.teams) {
+    dates[team.name] = {};
+  }
+
+  const fileMap = {};
+  fs.readdirSync(config.dataDir).forEach(file => {
+    if (file.includes('.json') && file.includes('-_-')) {
+      let [repositoryName, team, timestamp] = file.split('-_-');
+      timestamp = Number.parseInt(timestamp, 10);
+      const fileKey = repositoryName + '-_-' + team;
+      if (!fileMap[fileKey] || fileMap[fileKey].timestamp < timestamp) {
+        fileMap[fileKey] = {
+          repositoryName,
+          file,
+          team,
+          timestamp
+        };
+      }
+    }
+  });
+
+  for (let repository of config.repositories) {
+    try {
+      const repositoryName = repository.url.replace(/\W+/g, '-').toLowerCase();
+      for (let team of config.teams) {
+        const fileKey = repositoryName + '-_-' + team.name;
+        if (fileMap[fileKey]) {
+          const activeDays = JSON.parse(fs.readFileSync(path.resolve(config.dataDir, fileMap[fileKey].file)));
+          for (let key in activeDays) {
+            dates[team.name][key] = (dates[team.name][key] || 0) + activeDays[key];
+          }
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  for (let team of config.teams) {
+    makeReport(dates[team.name], team, config);
+  }
+}
+
+async function getActiveDays(rep, repository, team, config) {
   const branch = repository.branch || config.branch || 'master';
   return await new Promise((r, e) =>
     rep.activeDays(
       branch,
-      author => {
+      (email, author) => {
         author = author.toLowerCase();
-        const includes = team.users.includes(author);
-        const exclude = !team.exclude || !team.exclude.includes(author);
-        return (team.invert ? !includes : includes) && exclude;
+        email = email.toLowerCase();
+        const includes = team.users.includes(author) || team.users.includes(email);
+        const exclude = team.exclude && (team.exclude.includes(author) || team.exclude.includes(email));
+        const excludeRepository = repository.exclude && (repository.exclude.includes(author) || repository.exclude.includes(email));
+        return (team.invert ? !includes : includes) && (!team.exclude || !exclude) && (!repository.exclude || !excludeRepository);
       },
       (error, activeDays) => {
         if (error) {
@@ -125,6 +202,7 @@ function makeReport(dates, team, config) {
   for (let key in dates) {
     data.push({ Date: key, Value: dates[key] });
   }
+  // data = require('./data');
 
   data = data.sort((a, b) => new Date(a.Date) - new Date(b.Date));
 
