@@ -50,7 +50,7 @@ GitRepository.prototype.exec = async function(...args) {
 };
 
 GitRepository.prototype.activeDays = async function(checkAuthor, ...args) {
-  const dates = await this.exec('log', '--format="%at %ae %an"', '--all', '--no-merges', ...args);
+  const dates = await this.exec('log', '--format="%at %ae %an"', ...args);
   const dateMap = {};
 
   dates

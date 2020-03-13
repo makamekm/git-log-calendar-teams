@@ -149,14 +149,19 @@ async function report() {
 }
 
 async function getActiveDays(gitRepository, repository, team, config) {
-  return await gitRepository.activeDays((email, author) => {
-    author = author.toLowerCase();
-    email = email.toLowerCase();
-    const includes = team.users.includes(author) || team.users.includes(email);
-    const exclude = team.exclude && (team.exclude.includes(author) || team.exclude.includes(email));
-    const excludeRepository = repository.exclude && (repository.exclude.includes(author) || repository.exclude.includes(email));
-    return (team.invert ? !includes : includes) && (!team.exclude || !exclude) && (!repository.exclude || !excludeRepository);
-  }, getBranchName(repository, config));
+  return await gitRepository.activeDays(
+    (email, author) => {
+      author = author.toLowerCase();
+      email = email.toLowerCase();
+      const includes = team.users.includes(author) || team.users.includes(email);
+      const exclude = team.exclude && (team.exclude.includes(author) || team.exclude.includes(email));
+      const excludeRepository = repository.exclude && (repository.exclude.includes(author) || repository.exclude.includes(email));
+      return (team.invert ? !includes : includes) && (!team.exclude || !exclude) && (!repository.exclude || !excludeRepository);
+    },
+    '--all',
+    '--no-merges',
+    getBranchName(repository, config)
+  );
 }
 
 function makeReport(dates, team, config) {
