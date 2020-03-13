@@ -82,7 +82,7 @@ Repo.prototype.activeDays = function(committish, checkAuthor, callback) {
     committish = 'master';
   }
 
-  this.exec('log', '--format="%at %an"', '--no-merges', committish, function(error, dates) {
+  this.exec('log', '--format="%at %an"', '--all', '--no-merges', committish, function(error, dates) {
     if (error) {
       return callback(error);
     }
