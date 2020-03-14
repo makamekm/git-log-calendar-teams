@@ -3,6 +3,7 @@ cleanTmp: false
 tmpDir: "./repositories"
 outputDir: "./"
 dataDir: "./"
+authorDir: "./"
 repositories:
   - url: https://github.com/makamekm/git-log-calendar-teams.git
     branch: master
@@ -12,16 +13,23 @@ repositories:
     branch: develop
     exclude:
       - cicd
+  - url: https://github.com/facebook/react.git
+    branch: master
 teams:
-  - name: grid
+  - name: team
     users:
+      - dan.abramov@gmail.com
       - makame
       - makame@mail.ru
     exclude:
       - cicd
     output: "team.svg"
+    compare:
+      - others
   - name: others
     invert: true
     exclude:
       - cicd
     output: "others.svg"
+    compare:
+      - team

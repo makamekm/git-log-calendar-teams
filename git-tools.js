@@ -4,18 +4,6 @@ function GitRepository(path) {
   this.path = path;
 }
 
-GitRepository.parsePerson = (function() {
-  const rPerson = /^(\S+)\s(.+)$/;
-
-  return function(person) {
-    const matches = rPerson.exec(person);
-    return {
-      email: matches[1],
-      name: matches[2]
-    };
-  };
-})();
-
 GitRepository.clone = async function(options) {
   const repo = new GitRepository(options.dir);
 
@@ -59,7 +47,7 @@ GitRepository.prototype.activeDays = async function(checkAuthor, ...args) {
     .forEach(line => {
       line = line.replace(/\"/gi, '');
       let [timestamp, email, ...author] = line.split(' ');
-      author = author.join(' ').replace(/\"/gi, '');
+      author = author.join(' ').trim();
 
       if (!timestamp || !(checkAuthor && checkAuthor(email, author))) {
         return;
@@ -139,10 +127,14 @@ GitRepository.prototype.authors = async function(...args) {
   authors = Object.keys(authorMap)
     .map(author => {
       const commits = authorMap[author];
-      return Object.keys(GitRepository.parsePerson(author), {
+      let [email, ...name] = author.split(' ');
+      name = name.join(' ').trim();
+      return {
+        email,
+        name,
         commits,
         commitsPercent: ((commits * 100) / totalCommits).toFixed(1)
-      });
+      };
     })
     .sort((a, b) => {
       return b.commits - a.commits;

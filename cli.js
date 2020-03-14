@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 require('dotenv').config();
-const { collect, clean, report } = require('./index');
+const { collect, clean, report, authors } = require('./index');
 
 const args = process.argv.slice(2);
 
@@ -9,6 +9,10 @@ const fns = [];
 
 if ((!args.includes('report') && !args.includes('clean')) || args.includes('collect')) {
   fns.push(collect);
+}
+
+if (args.includes('authors')) {
+  fns.push(authors);
 }
 
 if (args.includes('clean')) {

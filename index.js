@@ -12,7 +12,8 @@ const DIVIDER = '-_-';
 module.exports = {
   collect,
   clean,
-  report
+  report,
+  authors
 };
 
 function getConfig() {
@@ -74,22 +75,51 @@ async function collect() {
       for (let team of config.teams) {
         const activeDays = await getActiveDays(gitRepository, repository, team, config);
         if (Object.keys(activeDays).length > 0) {
-          const repositoryStatsFileName = `${repositoryName}${DIVIDER}${team.name}${DIVIDER}${Date.now().toString()}.json`;
+          const repositoryStatsFileName = `${repositoryName}${DIVIDER}${team.name}${DIVIDER}${Date.now().toString()}.stats.json`;
           fs.writeFileSync(path.resolve(config.dataDir, repositoryStatsFileName), JSON.stringify(activeDays, null, 4));
         }
       }
     } catch (err) {
-      console.error(err);
+      if (process.env.DEBUG || config.debug) {
+        console.error(err);
+      }
     }
   }
+}
+
+function readAuthorsFolder(config) {
+  let toRemove = [];
+  const fileMap = {};
+  for (let file of fs.readdirSync(config.dataDir)) {
+    if (file.includes('.authors.json')) {
+      const line = file.split('.')[0];
+      let [repositoryName, timestamp] = line.split(DIVIDER);
+      timestamp = Number.parseInt(timestamp, 10);
+      const fileKey = repositoryName;
+      if (!fileMap[fileKey] || fileMap[fileKey].timestamp < timestamp) {
+        if (fileMap[fileKey]) {
+          toRemove.push(fileMap[fileKey].file);
+        }
+        fileMap[fileKey] = {
+          repositoryName,
+          file,
+          timestamp
+        };
+      } else {
+        toRemove.push(file);
+      }
+    }
+  }
+  return { fileMap, toRemove };
 }
 
 function readStatsFolder(config) {
   let toRemove = [];
   const fileMap = {};
   for (let file of fs.readdirSync(config.dataDir)) {
-    if (file.includes('.json') && file.includes(DIVIDER)) {
-      let [repositoryName, team, timestamp] = file.split(DIVIDER);
+    if (file.includes('.stats.json')) {
+      const line = file.split('.')[0];
+      let [repositoryName, team, timestamp] = line.split(DIVIDER);
       timestamp = Number.parseInt(timestamp, 10);
       const fileKey = repositoryName + DIVIDER + team;
       if (!fileMap[fileKey] || fileMap[fileKey].timestamp < timestamp) {
@@ -103,8 +133,7 @@ function readStatsFolder(config) {
           timestamp
         };
       } else {
-          toRemove.push(file);
-        }
+        toRemove.push(file);
       }
     }
   }
@@ -113,9 +142,37 @@ function readStatsFolder(config) {
 
 async function clean() {
   const config = getConfig();
-  const { toRemove } = readStatsFolder(config);
-  for (let file of toRemove) {
+  const { toRemove: toRemoveStats } = readStatsFolder(config);
+  const { toRemove: toRemoveAuthors } = readAuthorsFolder(config);
+  for (let file of [...toRemoveStats, ...toRemoveAuthors]) {
     fs.removeSync(file);
+  }
+}
+
+async function authors() {
+  const config = getConfig();
+  const tmpDir = path.resolve(config.tmpDir);
+  fs.ensureDirSync(config.authorDir);
+
+  for (let repository of config.repositories) {
+    try {
+      const repositoryName = getRepositoryName(repository);
+      const repositoryPath = path.resolve(tmpDir, repositoryName);
+      let gitRepository = new GitRepository(repositoryPath);
+
+      const authors = await gitRepository.authors();
+      if (process.env.DEBUG || config.debug) {
+        console.log(authors.slice(0, 10));
+      }
+      if (authors.length > 0) {
+        const repositoryAuthorsFileName = `${repositoryName}${DIVIDER}${Date.now().toString()}.authors.json`;
+        fs.writeFileSync(path.resolve(config.authorDir, repositoryAuthorsFileName), JSON.stringify(authors, null, 4));
+      }
+    } catch (err) {
+      if (process.env.DEBUG || config.debug) {
+        console.error(err);
+      }
+    }
   }
 }
 
@@ -142,12 +199,22 @@ async function report() {
         }
       }
     } catch (err) {
-      console.error(err);
+      if (process.env.DEBUG || config.debug) {
+        console.error(err);
+      }
     }
   }
 
   for (let team of config.teams) {
-    makeReport(dates[team.name], team, config);
+    let compared = [];
+
+    for (const compare of team.compare || []) {
+      for (const key in dates[compare]) {
+        compared.push(dates[compare][key]);
+      }
+    }
+
+    makeReport(dates[team.name], team, compared, config);
   }
 }
 
@@ -167,7 +234,7 @@ async function getActiveDays(gitRepository, repository, team, config) {
   );
 }
 
-function makeReport(dates, team, config) {
+function makeReport(dates, team, compared, config) {
   const output = path.resolve(config.outputDir, team.output);
 
   let data = [];
@@ -231,8 +298,19 @@ function makeReport(dates, team, config) {
     .reverse();
 
   const values = dateValues.map(c => c.value);
-  const maxValue = d3.max(values);
-  const minValue = d3.min(values);
+  let maxValue = d3.max(values);
+  let minValue = d3.min(values);
+
+  if (compared.length > 0) {
+    const maxValueCompared = d3.max(compared);
+    const minValueCompared = d3.min(compared);
+    if (maxValueCompared > maxValue) {
+      maxValue = maxValueCompared;
+    }
+    if (minValueCompared > minValue) {
+      minValue = minValueCompared;
+    }
+  }
 
   const group = svg.append('g');
 
