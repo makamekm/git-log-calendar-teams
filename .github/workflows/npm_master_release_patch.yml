@@ -1,0 +1,33 @@
+name: Node.js Patch Release
+
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - 'package.json'
+      - '.github/**'
+
+jobs:
+  publish_patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12
+          registry-url: https://registry.npmjs.org/
+      - run: npm install
+        env:
+          NODE_ENV: development
+      - run: npm run lint
+      - run: npm run build
+      - name: Upload binaries to release
+        uses: svenstaro/upload-release-action@v1-release
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: dist/git-log.exe
+          asset_name: git-log
+          tag: ${{ github.ref }}
+          overwrite: true
+      
