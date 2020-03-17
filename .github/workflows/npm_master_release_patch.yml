@@ -1,4 +1,4 @@
-name: Node.js Patch Release
+name: Release
 
 on:
   push:
@@ -24,7 +24,7 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: dist/git-log.exe
-          asset_name: git-log
-          tag: ${{ github.ref }}
+          asset_name: git-log.exe
+          tag: release
           overwrite: true
       
