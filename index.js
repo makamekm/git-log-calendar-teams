@@ -100,7 +100,7 @@ async function collect() {
 function readAuthorsFolder(config) {
   let toRemove = [];
   const fileMap = {};
-  for (let file of fs.readdirSync(config.dataDir)) {
+  for (let file of fs.readdirSync(config.authorDir)) {
     if (file.includes('.authors.json')) {
       const line = file.split('.')[0];
       let [repositoryName, timestamp] = line.split(DIVIDER);
@@ -108,7 +108,7 @@ function readAuthorsFolder(config) {
       const fileKey = repositoryName;
       if (!fileMap[fileKey] || fileMap[fileKey].timestamp < timestamp) {
         if (fileMap[fileKey]) {
-          toRemove.push(fileMap[fileKey].file);
+          toRemove.push(path.resolve(config.authorDir, fileMap[fileKey].file));
         }
         fileMap[fileKey] = {
           repositoryName,
@@ -116,7 +116,7 @@ function readAuthorsFolder(config) {
           timestamp
         };
       } else {
-        toRemove.push(file);
+        toRemove.push(path.resolve(config.authorDir, file));
       }
     }
   }
@@ -134,7 +134,7 @@ function readStatsFolder(config) {
       const fileKey = repositoryName + DIVIDER + team;
       if (!fileMap[fileKey] || fileMap[fileKey].timestamp < timestamp) {
         if (fileMap[fileKey]) {
-          toRemove.push(fileMap[fileKey].file);
+          toRemove.push(path.resolve(config.dataDir, fileMap[fileKey].file));
         }
         fileMap[fileKey] = {
           repositoryName,
@@ -143,7 +143,7 @@ function readStatsFolder(config) {
           timestamp
         };
       } else {
-        toRemove.push(file);
+        toRemove.push(path.resolve(config.dataDir, file));
       }
     }
   }
