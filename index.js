@@ -8,6 +8,7 @@ const fs = {
 const d3Node = require('d3-node');
 
 const DIVIDER = '-_-';
+const NULL_COLOR = '#ebedf0';
 
 module.exports = {
   collect,
@@ -16,10 +17,19 @@ module.exports = {
   authors
 };
 
-function getConfig() {
+async function getConfig() {
   const configPath = path.resolve(process.env.GIT_LOG_CONFIG_PATH || './git-log-config.yml');
-  const file = fs.readFileSync(configPath, 'utf8');
-  return YAML.parse(file);
+  if (fs.existsSync(configPath)) {
+    const file = fs.readFileSync(configPath, 'utf8');
+    return YAML.parse(file);
+  } else {
+    const p = `\\\\rjfs2\\corpshare$\\GitStats\\git-log-config.yml`;
+    if (!fs.existsSync(p)) {
+      throw Error('Config file has not been found: git-log-config.yml');
+    }
+    const file = fs.readFileSync(p, 'utf8');
+    return YAML.parse(file);
+  }
 }
 
 function getRepositoryName(repository) {
@@ -44,7 +54,7 @@ function getBranchName(repository, config) {
 }
 
 async function collect() {
-  const config = getConfig();
+  const config = await getConfig();
   collectUnusedUsers(config);
   const tmpDir = path.resolve(config.tmpDir);
   fs.ensureDirSync(tmpDir);
@@ -141,7 +151,7 @@ function readStatsFolder(config) {
 }
 
 async function clean() {
-  const config = getConfig();
+  const config = await getConfig();
   const { toRemove: toRemoveStats } = readStatsFolder(config);
   const { toRemove: toRemoveAuthors } = readAuthorsFolder(config);
   for (let file of [...toRemoveStats, ...toRemoveAuthors]) {
@@ -150,7 +160,7 @@ async function clean() {
 }
 
 async function authors() {
-  const config = getConfig();
+  const config = await getConfig();
   const tmpDir = path.resolve(config.tmpDir);
   fs.ensureDirSync(config.authorDir);
 
@@ -177,7 +187,7 @@ async function authors() {
 }
 
 async function report() {
-  const config = getConfig();
+  const config = await getConfig();
 
   const dates = {};
   for (let team of config.teams) {
@@ -234,6 +244,8 @@ async function getActiveDays(gitRepository, repository, team, config) {
   );
 }
 
+const DAY_MILLISECONDS = 86400000;
+
 function makeReport(dates, team, compared, config) {
   const output = path.resolve(config.outputDir, team.output);
 
@@ -245,6 +257,24 @@ function makeReport(dates, team, compared, config) {
   // data = require('./data');
 
   data = data.sort((a, b) => new Date(a.Date) - new Date(b.Date));
+
+  data = data.reduce((a, v) => {
+    const lastDate = new Date(v.Date);
+    const firstDate = a[a.length - 1] && new Date(a[a.length - 1].Date);
+    if (firstDate) {
+      const emptyDays = [...Array(lastDate / DAY_MILLISECONDS - firstDate / DAY_MILLISECONDS + 1).keys()];
+      const emptyDates = emptyDays.map(k => {
+        const d = new Date(firstDate);
+        d.setDate(d.getDate() + k + 1);
+        return d;
+      });
+      emptyDates.forEach(date => {
+        a.push({ Date: date, Value: 0 });
+      });
+    }
+    a.push(v);
+    return a;
+  }, []);
 
   let minYear = Infinity;
   let maxYear = 0;
@@ -299,16 +329,12 @@ function makeReport(dates, team, compared, config) {
 
   const values = dateValues.map(c => c.value);
   let maxValue = d3.max(values);
-  let minValue = d3.min(values);
+  const minValue = 0;
 
   if (compared.length > 0) {
     const maxValueCompared = d3.max(compared);
-    const minValueCompared = d3.min(compared);
     if (maxValueCompared > maxValue) {
       maxValue = maxValueCompared;
-    }
-    if (minValueCompared > minValue) {
-      minValue = minValueCompared;
     }
   }
 
@@ -335,7 +361,7 @@ function makeReport(dates, team, compared, config) {
   const countDay = d => d.getUTCDay();
   const timeWeek = d3.utcSunday;
   const formatDate = d3.utcFormat('%x');
-  const colorFn = d3.scaleSequential(d3.interpolateBuGn).domain([Math.floor(minValue), Math.ceil(maxValue)]);
+  const colorFn = d3.scaleSequential(d3[config.colorFn || 'interpolateGreens']).domain([Math.floor(minValue), Math.ceil(maxValue)]);
 
   year
     .append('g')
@@ -354,11 +380,16 @@ function makeReport(dates, team, compared, config) {
     .selectAll('rect')
     .data(d => d.values)
     .join('rect')
-    .attr('width', cellSize - 1.5)
-    .attr('height', cellSize - 1.5)
+    .attr('width', cellSize - (config.padding != null ? config.padding : 3.5))
+    .attr('height', cellSize - (config.padding != null ? config.padding : 3.5))
     .attr('x', (d, i) => timeWeek.count(d3.utcYear(d.date), d.date) * cellSize + 10)
     .attr('y', d => countDay(d.date) * cellSize + 0.5)
-    .attr('fill', d => colorFn(d.value))
+    .attr('fill', d => {
+      if (d.value < 1) {
+        return config.zeroColor || NULL_COLOR;
+      }
+      return colorFn(d.value);
+    })
     .append('title')
     .text(d => `${formatDate(d.date)}: ${d.value.toFixed(2)}`);
 
