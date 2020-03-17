@@ -26,7 +26,8 @@
     "release-it:major": "release-it major -n",
     "release:patch": "run-s is-master lint release-it:patch",
     "release:minor": "run-s is-master lint release-it:minor",
-    "release:major": "run-s is-master lint release-it:major"
+    "release:major": "run-s is-master lint release-it:major",
+    "build": "nexe -t win32-x86-10.13.0 ./cli.js -o dist/git-log.exe"
   },
   "bin": {
     "git-log-calendar-teams": "./cli.js"
@@ -51,13 +52,14 @@
     "yaml": "^1.8.2"
   },
   "devDependencies": {
-    "prettier": "^1.19.1",
     "babel-eslint": "^10.1.0",
     "eslint": "^6.8.0",
     "eslint-config-prettier": "^6.10.0",
     "eslint-plugin-prettier": "^3.1.2",
     "git-branch-is": "^3.1.0",
+    "nexe": "^3.3.2",
     "npm-run-all": "^4.1.5",
+    "prettier": "^1.19.1",
     "release-it": "^13.1.1"
   }
 }
