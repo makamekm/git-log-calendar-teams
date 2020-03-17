@@ -1,5 +1,7 @@
 const spawn = require('spawnback');
 
+const BREAK_LINE = '__brln__ ';
+
 function GitRepository(path) {
   this.path = path;
 }
@@ -37,30 +39,54 @@ GitRepository.prototype.exec = async function(...args) {
   );
 };
 
+function getStats(lines) {
+  lines = lines.split('\n');
+  const [line, _, ...lns] = lines;
+  let filesChanged = 0;
+  let linesAdded = 0;
+  let linesDeleted = 0;
+  let linesChanged = 0;
+  lns.forEach(ln => {
+    ln = ln.split('\t');
+    if (ln[0]) {
+      filesChanged++;
+      let added = Number(ln[0]);
+      added = Number.isNaN(added) ? 0 : added;
+      let deleted = Number(ln[1]);
+      deleted = Number.isNaN(deleted) ? 0 : deleted;
+      linesAdded += added;
+      linesDeleted += deleted;
+      linesChanged += added + deleted;
+    }
+  });
+  return {
+    line,
+    filesChanged,
+    linesAdded,
+    linesDeleted,
+    linesChanged
+  };
+}
+
+function getDate(timestamp) {
+  let date = new Date(timestamp * 1000);
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+
+  date = year + '-' + (month < 10 ? '0' : '') + month + '-' + (day < 10 ? '0' : '') + day;
+  return date;
+}
+
 GitRepository.prototype.activeDays = async function(checkAuthor, sum, ...args) {
-  const dates = await this.exec('log', '--format="__brln__ %at %ae %an"', '--find-renames', '--no-renames', '--numstat', ...args);
+  const dates = await this.exec('log', `--format=${BREAK_LINE}%at %ae %an`, '--find-renames', '--no-renames', '--numstat', ...args);
   const dateMap = {};
 
   dates
-    .replace(/\"/gi, '')
-    .split('__brln__ ')
+    .split(BREAK_LINE)
     .sort()
     .forEach(lines => {
-      lines = lines.split('\n');
-      const [line, _, ...lns] = lines;
-      let filesChanged = 0;
-      let linesAdded = 0;
-      let linesDeleted = 0;
-      let linesChanged = 0;
-      lns.forEach(ln => {
-        ln = ln.split('\t');
-        if (ln[0]) {
-          filesChanged++;
-          linesAdded += Number(ln[0]);
-          linesDeleted += Number(ln[1]);
-          linesChanged += Number(ln[0]) + Number(ln[1]);
-        }
-      });
+      const { line, filesChanged, linesAdded, linesDeleted, linesChanged } = getStats(lines);
       let [timestamp, email, ...author] = line.split(' ');
       author = author.join(' ').trim();
 
@@ -68,12 +94,7 @@ GitRepository.prototype.activeDays = async function(checkAuthor, sum, ...args) {
         return;
       }
 
-      let date = new Date(timestamp * 1000);
-      const year = date.getFullYear();
-      const month = date.getMonth() + 1;
-      const day = date.getDate();
-
-      date = year + '-' + (month < 10 ? '0' : '') + month + '-' + (day < 10 ? '0' : '') + day;
+      const date = getDate(timestamp);
 
       if (!dateMap[date]) {
         dateMap[date] = 0;
@@ -133,31 +154,76 @@ GitRepository.prototype.reset = async function() {
 };
 
 GitRepository.prototype.authors = async function(...args) {
-  const data = await this.exec('log', '--format=%aE %aN', ...args);
+  const data = await this.exec('log', `--format=${BREAK_LINE}%at %aE %aN`, '--find-renames', '--no-renames', '--numstat', ...args);
 
-  let authors = data.length ? data.split('\n') : [];
+  let authors = data.length ? data.split(BREAK_LINE) : [];
   const authorMap = {};
   let totalCommits = 0;
+  let totalFilesChanged = 0;
+  let totalLinesAdded = 0;
+  let totalLinesDeleted = 0;
+  let totalLinesChanged = 0;
 
-  authors.forEach(author => {
+  authors.forEach(lines => {
+    const { line, filesChanged, linesAdded, linesDeleted, linesChanged } = getStats(lines);
+    let [timestamp, ...author] = line.split(' ');
+    author = author.join(' ').trim();
+    const date = getDate(timestamp);
+
     if (!authorMap[author]) {
-      authorMap[author] = 0;
+      authorMap[author] = {
+        commits: 0,
+        filesChanged: 0,
+        linesAdded: 0,
+        linesDeleted: 0,
+        linesChanged: 0,
+        map: {}
+      };
     }
 
-    authorMap[author]++;
+    if (!authorMap[author].map[date]) {
+      authorMap[author].map[date] = {
+        commits: 0,
+        filesChanged: 0,
+        linesAdded: 0,
+        linesDeleted: 0,
+        linesChanged: 0
+      };
+    }
+
+    authorMap[author].map[date].commits++;
+    authorMap[author].map[date].filesChanged += filesChanged;
+    authorMap[author].map[date].linesAdded += linesAdded;
+    authorMap[author].map[date].linesDeleted += linesDeleted;
+    authorMap[author].map[date].linesChanged += linesChanged;
+
+    authorMap[author].commits++;
+    authorMap[author].filesChanged += filesChanged;
+    authorMap[author].linesAdded += linesAdded;
+    authorMap[author].linesDeleted += linesDeleted;
+    authorMap[author].linesChanged += linesChanged;
+
     totalCommits++;
+    totalFilesChanged += filesChanged;
+    totalLinesAdded += linesAdded;
+    totalLinesDeleted += linesDeleted;
+    totalLinesChanged += linesChanged;
   });
 
   authors = Object.keys(authorMap)
     .map(author => {
-      const commits = authorMap[author];
+      const commits = authorMap[author].commits;
       let [email, ...name] = author.split(' ');
       name = name.join(' ').trim();
       return {
+        ...authorMap[author],
         email,
         name,
-        commits,
-        commitsPercent: ((commits * 100) / totalCommits).toFixed(1)
+        commitsPercent: ((authorMap[author].commits * 100) / totalCommits).toFixed(1),
+        filesChangedPercent: ((authorMap[author].filesChanged * 100) / totalFilesChanged).toFixed(1),
+        linesAddedPercent: ((authorMap[author].linesAdded * 100) / totalLinesAdded).toFixed(1),
+        linesDeletedPercent: ((authorMap[author].linesDeleted * 100) / totalLinesDeleted).toFixed(1),
+        linesChangedPercent: ((authorMap[author].linesChanged * 100) / totalLinesChanged).toFixed(1)
       };
     })
     .sort((a, b) => {
