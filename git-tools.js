@@ -37,15 +37,30 @@ GitRepository.prototype.exec = async function(...args) {
   );
 };
 
-GitRepository.prototype.activeDays = async function(checkAuthor, ...args) {
-  const dates = await this.exec('log', '--format="%at %ae %an"', ...args);
+GitRepository.prototype.activeDays = async function(checkAuthor, sum, ...args) {
+  const dates = await this.exec('log', '--format="__brln__ %at %ae %an"', '--find-renames', '--no-renames', '--numstat', ...args);
   const dateMap = {};
 
   dates
-    .split('\n')
+    .replace(/\"/gi, '')
+    .split('__brln__ ')
     .sort()
-    .forEach(line => {
-      line = line.replace(/\"/gi, '');
+    .forEach(lines => {
+      lines = lines.split('\n');
+      const [line, _, ...lns] = lines;
+      let filesChanged = 0;
+      let linesAdded = 0;
+      let linesDeleted = 0;
+      let linesChanged = 0;
+      lns.forEach(ln => {
+        ln = ln.split('\t');
+        if (ln[0]) {
+          filesChanged++;
+          linesAdded += Number(ln[0]);
+          linesDeleted += Number(ln[1]);
+          linesChanged += Number(ln[0]) + Number(ln[1]);
+        }
+      });
       let [timestamp, email, ...author] = line.split(' ');
       author = author.join(' ').trim();
 
@@ -63,7 +78,16 @@ GitRepository.prototype.activeDays = async function(checkAuthor, ...args) {
       if (!dateMap[date]) {
         dateMap[date] = 0;
       }
-      dateMap[date]++;
+
+      dateMap[date] += sum({
+        linesAdded,
+        linesDeleted,
+        linesChanged,
+        filesChanged,
+        email,
+        author,
+        date
+      });
     });
 
   return dateMap;

@@ -238,6 +238,9 @@ async function getActiveDays(gitRepository, repository, team, config) {
       const excludeRepository = repository.exclude && (repository.exclude.includes(author) || repository.exclude.includes(email));
       return (team.invert ? !includes : includes) && (!team.exclude || !exclude) && (!repository.exclude || !excludeRepository);
     },
+    ({ linesAdded, linesDeleted, linesChanged, filesChanged, email, author, date }) => {
+      return linesChanged;
+    },
     '--all',
     '--no-merges',
     getBranchName(repository, config)
