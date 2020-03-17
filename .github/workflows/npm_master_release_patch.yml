@@ -2,8 +2,8 @@ name: Release
 
 on:
   push:
-    branches:
-      - master
+    tags:
+      - '*'
 
 jobs:
   publish_patch:
@@ -25,6 +25,6 @@ jobs:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: dist/git-log.exe
           asset_name: git-log.exe
-          tag: release
+          tag: ${{ github.ref }}
           overwrite: true
       
