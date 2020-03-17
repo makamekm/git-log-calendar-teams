@@ -11,10 +11,6 @@ if ((!args.includes('report') && !args.includes('clean')) || args.includes('coll
   fns.push(collect);
 }
 
-if ((!args.includes('report') && !args.includes('clean')) || args.includes('authors')) {
-  fns.push(authors);
-}
-
 if (args.includes('clean')) {
   fns.push(clean);
 }

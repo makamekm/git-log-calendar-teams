@@ -2,8 +2,7 @@ branch: master
 cleanTmp: false
 tmpDir: "./repositories"
 outputDir: "./"
-dataDir: "./"
-authorDir: "./"
+statsDir: "./"
 repositories:
   - url: https://github.com/makamekm/git-log-calendar-teams.git
     branch: master

@@ -78,42 +78,6 @@ function getDate(timestamp) {
   return date;
 }
 
-GitRepository.prototype.activeDays = async function(checkAuthor, sum, ...args) {
-  const dates = await this.exec('log', `--format=${BREAK_LINE}%at %ae %an`, '--find-renames', '--no-renames', '--numstat', ...args);
-  const dateMap = {};
-
-  dates
-    .split(BREAK_LINE)
-    .sort()
-    .forEach(lines => {
-      const { line, filesChanged, linesAdded, linesDeleted, linesChanged } = getStats(lines);
-      let [timestamp, email, ...author] = line.split(' ');
-      author = author.join(' ').trim();
-
-      if (!timestamp || !(checkAuthor && checkAuthor(email, author))) {
-        return;
-      }
-
-      const date = getDate(timestamp);
-
-      if (!dateMap[date]) {
-        dateMap[date] = 0;
-      }
-
-      dateMap[date] += sum({
-        linesAdded,
-        linesDeleted,
-        linesChanged,
-        filesChanged,
-        email,
-        author,
-        date
-      });
-    });
-
-  return dateMap;
-};
-
 GitRepository.prototype.age = async function() {
   const data = await this.exec('log', '--reverse', '--format=%cr');
   return data.split('\n')[0].replace(/\sago/, '');
@@ -154,7 +118,16 @@ GitRepository.prototype.reset = async function() {
 };
 
 GitRepository.prototype.authors = async function(...args) {
-  const data = await this.exec('log', `--format=${BREAK_LINE}%at %aE %aN`, '--find-renames', '--no-renames', '--numstat', ...args);
+  const data = await this.exec(
+    'log',
+    `--format=${BREAK_LINE}%at %aE %aN`,
+    '--find-renames',
+    '--no-renames',
+    '--numstat',
+    '--all',
+    '--no-merges',
+    ...args
+  );
 
   let authors = data.length ? data.split(BREAK_LINE) : [];
   const authorMap = {};
@@ -169,6 +142,10 @@ GitRepository.prototype.authors = async function(...args) {
     let [timestamp, ...author] = line.split(' ');
     author = author.join(' ').trim();
     const date = getDate(timestamp);
+
+    if (!author) {
+      return;
+    }
 
     if (!authorMap[author]) {
       authorMap[author] = {
@@ -212,18 +189,17 @@ GitRepository.prototype.authors = async function(...args) {
 
   authors = Object.keys(authorMap)
     .map(author => {
-      const commits = authorMap[author].commits;
       let [email, ...name] = author.split(' ');
       name = name.join(' ').trim();
       return {
-        ...authorMap[author],
         email,
         name,
         commitsPercent: ((authorMap[author].commits * 100) / totalCommits).toFixed(1),
         filesChangedPercent: ((authorMap[author].filesChanged * 100) / totalFilesChanged).toFixed(1),
         linesAddedPercent: ((authorMap[author].linesAdded * 100) / totalLinesAdded).toFixed(1),
         linesDeletedPercent: ((authorMap[author].linesDeleted * 100) / totalLinesDeleted).toFixed(1),
-        linesChangedPercent: ((authorMap[author].linesChanged * 100) / totalLinesChanged).toFixed(1)
+        linesChangedPercent: ((authorMap[author].linesChanged * 100) / totalLinesChanged).toFixed(1),
+        ...authorMap[author]
       };
     })
     .sort((a, b) => {

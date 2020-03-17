@@ -13,8 +13,7 @@ const NULL_COLOR = '#ebedf0';
 module.exports = {
   collect,
   clean,
-  report,
-  authors
+  report
 };
 
 async function getConfig() {
@@ -53,11 +52,44 @@ function getBranchName(repository, config) {
   return repository.branch || config.branch || 'master';
 }
 
+function readStatsFolder(config) {
+  let toRemove = [];
+  const fileMap = {};
+  for (let file of fs.readdirSync(config.statsDir)) {
+    if (file.includes('.stats.json')) {
+      const line = file.split('.')[0];
+      let [repositoryName, timestamp] = line.split(DIVIDER);
+      timestamp = Number.parseInt(timestamp, 10);
+      const fileKey = repositoryName;
+      if (!fileMap[fileKey] || fileMap[fileKey].timestamp < timestamp) {
+        if (fileMap[fileKey]) {
+          toRemove.push(path.resolve(config.statsDir, fileMap[fileKey].file));
+        }
+        fileMap[fileKey] = {
+          repositoryName,
+          file,
+          timestamp
+        };
+      } else {
+        toRemove.push(path.resolve(config.statsDir, file));
+      }
+    }
+  }
+  return { fileMap, toRemove };
+}
+
+async function clean() {
+  const config = await getConfig();
+  const { toRemove } = readStatsFolder(config);
+  for (let file of toRemove) {
+    fs.removeSync(file);
+  }
+}
+
 async function collect() {
   const config = await getConfig();
-  collectUnusedUsers(config);
   const tmpDir = path.resolve(config.tmpDir);
-  fs.ensureDirSync(tmpDir);
+  fs.ensureDirSync(config.statsDir);
 
   for (let repository of config.repositories) {
     try {
@@ -82,101 +114,13 @@ async function collect() {
         await gitRepository.checkout(getBranchName(repository, config));
       }
 
-      for (let team of config.teams) {
-        const activeDays = await getActiveDays(gitRepository, repository, team, config);
-        if (Object.keys(activeDays).length > 0) {
-          const repositoryStatsFileName = `${repositoryName}${DIVIDER}${team.name}${DIVIDER}${Date.now().toString()}.stats.json`;
-          fs.writeFileSync(path.resolve(config.dataDir, repositoryStatsFileName), JSON.stringify(activeDays, null, 4));
-        }
-      }
-    } catch (err) {
-      if (process.env.DEBUG || config.debug) {
-        console.error(err);
-      }
-    }
-  }
-}
-
-function readAuthorsFolder(config) {
-  let toRemove = [];
-  const fileMap = {};
-  for (let file of fs.readdirSync(config.authorDir)) {
-    if (file.includes('.authors.json')) {
-      const line = file.split('.')[0];
-      let [repositoryName, timestamp] = line.split(DIVIDER);
-      timestamp = Number.parseInt(timestamp, 10);
-      const fileKey = repositoryName;
-      if (!fileMap[fileKey] || fileMap[fileKey].timestamp < timestamp) {
-        if (fileMap[fileKey]) {
-          toRemove.push(path.resolve(config.authorDir, fileMap[fileKey].file));
-        }
-        fileMap[fileKey] = {
-          repositoryName,
-          file,
-          timestamp
-        };
-      } else {
-        toRemove.push(path.resolve(config.authorDir, file));
-      }
-    }
-  }
-  return { fileMap, toRemove };
-}
-
-function readStatsFolder(config) {
-  let toRemove = [];
-  const fileMap = {};
-  for (let file of fs.readdirSync(config.dataDir)) {
-    if (file.includes('.stats.json')) {
-      const line = file.split('.')[0];
-      let [repositoryName, team, timestamp] = line.split(DIVIDER);
-      timestamp = Number.parseInt(timestamp, 10);
-      const fileKey = repositoryName + DIVIDER + team;
-      if (!fileMap[fileKey] || fileMap[fileKey].timestamp < timestamp) {
-        if (fileMap[fileKey]) {
-          toRemove.push(path.resolve(config.dataDir, fileMap[fileKey].file));
-        }
-        fileMap[fileKey] = {
-          repositoryName,
-          file,
-          team,
-          timestamp
-        };
-      } else {
-        toRemove.push(path.resolve(config.dataDir, file));
-      }
-    }
-  }
-  return { fileMap, toRemove };
-}
-
-async function clean() {
-  const config = await getConfig();
-  const { toRemove: toRemoveStats } = readStatsFolder(config);
-  const { toRemove: toRemoveAuthors } = readAuthorsFolder(config);
-  for (let file of [...toRemoveStats, ...toRemoveAuthors]) {
-    fs.removeSync(file);
-  }
-}
-
-async function authors() {
-  const config = await getConfig();
-  const tmpDir = path.resolve(config.tmpDir);
-  fs.ensureDirSync(config.authorDir);
-
-  for (let repository of config.repositories) {
-    try {
-      const repositoryName = getRepositoryName(repository);
-      const repositoryPath = path.resolve(tmpDir, repositoryName);
-      let gitRepository = new GitRepository(repositoryPath);
-
       const authors = await gitRepository.authors();
       if (process.env.DEBUG || config.debug) {
         console.log(authors.slice(0, 10));
       }
       if (authors.length > 0) {
-        const repositoryAuthorsFileName = `${repositoryName}${DIVIDER}${Date.now().toString()}.authors.json`;
-        fs.writeFileSync(path.resolve(config.authorDir, repositoryAuthorsFileName), JSON.stringify(authors, null, 4));
+        const repositoryAuthorsFileName = `${repositoryName}${DIVIDER}${Date.now().toString()}.stats.json`;
+        fs.writeFileSync(path.resolve(config.statsDir, repositoryAuthorsFileName), JSON.stringify(authors, null, 4));
       }
     } catch (err) {
       if (process.env.DEBUG || config.debug) {
@@ -186,8 +130,18 @@ async function authors() {
   }
 }
 
+function isAuthor(repository, team, email, name) {
+  name = name.toLowerCase();
+  email = email.toLowerCase();
+  const includes = team.users.includes(name) || team.users.includes(email);
+  const exclude = team.exclude && (team.exclude.includes(name) || team.exclude.includes(email));
+  const excludeRepository = repository.exclude && (repository.exclude.includes(name) || repository.exclude.includes(email));
+  return (team.invert ? !includes : includes) && (!team.exclude || !exclude) && (!repository.exclude || !excludeRepository);
+}
+
 async function report() {
   const config = await getConfig();
+  collectUnusedUsers(config);
 
   const dates = {};
   for (let team of config.teams) {
@@ -196,21 +150,18 @@ async function report() {
 
   const { fileMap } = readStatsFolder(config);
 
-  for (let repository of config.repositories) {
-    try {
+  for (let team of config.teams) {
+    for (let repository of config.repositories) {
       const repositoryName = getRepositoryName(repository);
-      for (let team of config.teams) {
-        const fileKey = repositoryName + DIVIDER + team.name;
-        if (fileMap[fileKey]) {
-          const activeDays = JSON.parse(fs.readFileSync(path.resolve(config.dataDir, fileMap[fileKey].file), 'utf8'));
-          for (let key in activeDays) {
-            dates[team.name][key] = (dates[team.name][key] || 0) + activeDays[key];
+      if (fileMap[repositoryName]) {
+        const authors = JSON.parse(fs.readFileSync(path.resolve(config.statsDir, fileMap[repositoryName].file), 'utf8'));
+        for (let author of authors) {
+          if (isAuthor(repository, team, author.email, author.name)) {
+            for (let key in author.map) {
+              dates[team.name][key] = (dates[team.name][key] || 0) + author.map[key].linesChanged;
+            }
           }
         }
-      }
-    } catch (err) {
-      if (process.env.DEBUG || config.debug) {
-        console.error(err);
       }
     }
   }
@@ -226,25 +177,6 @@ async function report() {
 
     makeReport(dates[team.name], team, compared, config);
   }
-}
-
-async function getActiveDays(gitRepository, repository, team, config) {
-  return await gitRepository.activeDays(
-    (email, author) => {
-      author = author.toLowerCase();
-      email = email.toLowerCase();
-      const includes = team.users.includes(author) || team.users.includes(email);
-      const exclude = team.exclude && (team.exclude.includes(author) || team.exclude.includes(email));
-      const excludeRepository = repository.exclude && (repository.exclude.includes(author) || repository.exclude.includes(email));
-      return (team.invert ? !includes : includes) && (!team.exclude || !exclude) && (!repository.exclude || !excludeRepository);
-    },
-    ({ linesAdded, linesDeleted, linesChanged, filesChanged, email, author, date }) => {
-      return linesChanged;
-    },
-    '--all',
-    '--no-merges',
-    getBranchName(repository, config)
-  );
 }
 
 const DAY_MILLISECONDS = 86400000;
