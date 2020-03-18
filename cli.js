@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
-require('dotenv').config();
-const { collect, clean, report, authors } = require('./index');
+const { collect, clean, report } = require('./index');
 
 const args = process.argv.slice(2);
 
