@@ -1,34 +1,48 @@
 branch: master
 cleanTmp: false
-tmpDir: "./repositories"
-outputDir: "./"
-statsDir: "./"
+debug: true
+tmpDir: ./repositories
+statsDir: ./
+
 repositories:
   - url: https://github.com/makamekm/git-log-calendar-teams.git
+    name: git-log-calendar-teams
     branch: master
-    exclude:
-      - cicd
   - url: https://github.com/makamekm/figma-react.git
+    name: figma-react
     branch: develop
     exclude:
       - cicd
   - url: https://github.com/facebook/react.git
+    name: react
     branch: master
+
+users:
+  - name: Maxim Karpov
+    associations:
+      - makame
+      - makame@mail.ru
+      - Maxim Karpov
+      - Karpov Maxim
+
 teams:
   - name: team
     users:
       - dan.abramov@gmail.com
-      - makame
-      - makame@mail.ru
-    exclude:
-      - cicd
-    output: "team.svg"
-    compare:
-      - others
+      - Maxim Karpov
+    # exclude:
+    #   - cicd
   - name: others
     invert: true
-    exclude:
-      - cicd
-    output: "others.svg"
-    compare:
+    # exclude:
+    #   - cicd
+
+reportCalendarTeam:
+  - team: team
+    output: ./team.svg
+    compareTeams:
+      - others
+  - team: others
+    output: ./others.svg
+    compareTeams:
       - team

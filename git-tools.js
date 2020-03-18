@@ -194,11 +194,11 @@ GitRepository.prototype.authors = async function(...args) {
       return {
         email,
         name,
-        commitsPercent: ((authorMap[author].commits * 100) / totalCommits).toFixed(1),
-        filesChangedPercent: ((authorMap[author].filesChanged * 100) / totalFilesChanged).toFixed(1),
-        linesAddedPercent: ((authorMap[author].linesAdded * 100) / totalLinesAdded).toFixed(1),
-        linesDeletedPercent: ((authorMap[author].linesDeleted * 100) / totalLinesDeleted).toFixed(1),
-        linesChangedPercent: ((authorMap[author].linesChanged * 100) / totalLinesChanged).toFixed(1),
+        commitsPercent: Number(((authorMap[author].commits * 100) / totalCommits).toFixed(1)),
+        filesChangedPercent: Number(((authorMap[author].filesChanged * 100) / totalFilesChanged).toFixed(1)),
+        linesAddedPercent: Number(((authorMap[author].linesAdded * 100) / totalLinesAdded).toFixed(1)),
+        linesDeletedPercent: Number(((authorMap[author].linesDeleted * 100) / totalLinesDeleted).toFixed(1)),
+        linesChangedPercent: Number(((authorMap[author].linesChanged * 100) / totalLinesChanged).toFixed(1)),
         ...authorMap[author]
       };
     })
