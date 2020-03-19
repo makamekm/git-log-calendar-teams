@@ -1,6 +1,7 @@
 const GitRepository = require('./git-tools');
 const YAML = require('yaml');
 const path = require('path');
+const colorGenerator = require('color-generator');
 const fs = {
   ...require('fs'),
   ...require('fs-extra')
@@ -20,6 +21,11 @@ const MARGIN_TOP = CELL_SIZE * 0.5;
 const MARGIN_LEFT = 50;
 const MARGIN_RIGHT = 10;
 const WEEKS_IN_A_YEAR = 53;
+
+// Donut Report
+const DONUT_WIDTH = 450;
+const DONUT_HEIGHT = 450;
+const DONUT_MARGIN = 40;
 
 // Export API
 module.exports = {
@@ -171,27 +177,45 @@ function isAuthorBelongToRepositoryAndTeam(repository, team, users, email, name)
   }
 }
 
+function readStats(fileMap, config) {
+  for (let repository of config.repositories) {
+    const repositoryName = getRepositoryName(repository);
+    if (fileMap[repositoryName]) {
+      const authors = JSON.parse(fs.readFileSync(path.resolve(config.statsDir, fileMap[repositoryName].file), 'utf8'));
+      fileMap[repositoryName].data = authors;
+    }
+  }
+  return fileMap;
+}
+
 // Generate calendar reports from teams (reportCalendarTeam)
 async function report() {
   const config = await getConfig();
   collectUnusedUsers(config);
 
-  const dates = {};
+  const { fileMap } = readStatsFolder(config);
+  readStats(fileMap, config);
+
+  // 1) reportCalendarTeam
+  reportCalendarTeam(fileMap, config);
+}
+
+function reportCalendarTeam(fileMap, config) {
+  const teamDates = {};
   for (let team of config.teams) {
-    dates[team.name] = {};
+    teamDates[team.name] = {};
   }
 
-  const { fileMap } = readStatsFolder(config);
-
+  // Collect teams data
   for (let team of config.teams) {
     for (let repository of config.repositories) {
       const repositoryName = getRepositoryName(repository);
-      if (fileMap[repositoryName]) {
-        const authors = JSON.parse(fs.readFileSync(path.resolve(config.statsDir, fileMap[repositoryName].file), 'utf8'));
-        for (let author of authors) {
+      if (fileMap[repositoryName] && fileMap[repositoryName].data) {
+        for (let author of fileMap[repositoryName].data) {
           if (isAuthorBelongToRepositoryAndTeam(repository, team, config.users, author.email, author.name)) {
             for (let key in author.map) {
-              dates[team.name][key] = (dates[team.name][key] || 0) + author.map[key].linesChanged;
+              // Compare by total contributed lines (added + removed)
+              teamDates[team.name][key] = (teamDates[team.name][key] || 0) + author.map[key].linesChanged;
             }
           }
         }
@@ -199,9 +223,10 @@ async function report() {
     }
   }
 
-  for (let report of config.reportCalendarTeam) {
-    const comparedData = getComparedData(report, dates);
-    generateTeamCalendarReport(dates[report.team], report, comparedData, config);
+  // reportCalendarTeam
+  for (let report of config.reportCalendarTeam || []) {
+    const comparedData = getComparedData(report, teamDates);
+    generateTeamCalendarReport(teamDates[report.team], report, comparedData, config);
   }
 }
 
@@ -393,6 +418,98 @@ function generateTeamCalendarReport(dates, report, compared, config) {
     })
     .append('title')
     .text(d => `${formatDate(d.date)}: ${d.value.toFixed(2)}`);
+
+  fs.writeFileSync(path.resolve(report.output), d3n.svgString());
+}
+
+// Generate donut report
+function generateDonutReport(data, report, config) {
+  const d3n = new d3Node();
+  const d3 = d3n.d3;
+
+  // Create dummy data
+  data = { a: 9, b: 20, c: 30, d: 8, e: 12 };
+
+  // The radius of the pieplot is half the width or half the height (smallest one). I subtract a bit of margin.
+  const radius = Math.min(DONUT_WIDTH, DONUT_HEIGHT) / 2 - DONUT_MARGIN;
+
+  const svg = d3n
+    .createSVG(width, height)
+    .append('g')
+    .attr('transform', 'translate(' + DONUT_WIDTH / 2 + ',' + DONUT_HEIGHT / 2 + ')');
+
+  // set the color scale
+  const color = d3
+    .scaleOrdinal()
+    .domain(data)
+    .range(Object.keys(data).map(() => colorGenerator().hexString()));
+
+  // Compute the position of each group on the pie:
+  const pie = d3
+    .pie()
+    .sort(null) // Do not sort group by size
+    .value(d => d.value);
+  const data_ready = pie(d3.entries(data));
+
+  // The arc generator
+  const arc = d3
+    .arc()
+    .innerRadius(radius * 0.5) // This is the size of the donut hole
+    .outerRadius(radius * 0.8);
+
+  // Another arc that won't be drawn. Just for labels positioning
+  const outerArc = d3
+    .arc()
+    .innerRadius(radius * 0.9)
+    .outerRadius(radius * 0.9);
+
+  // Build the pie chart: Basically, each part of the pie is a path that we build using the arc function.
+  svg
+    .selectAll('allSlices')
+    .data(data_ready)
+    .enter()
+    .append('path')
+    .attr('d', arc)
+    .attr('fill', d => color(d.data.key))
+    .attr('stroke', 'white')
+    .style('stroke-width', '2px')
+    .style('opacity', 0.7);
+
+  // Add the polylines between chart and labels:
+  svg
+    .selectAll('allPolylines')
+    .data(data_ready)
+    .enter()
+    .append('polyline')
+    .attr('stroke', 'black')
+    .style('fill', 'none')
+    .attr('stroke-width', 1)
+    .attr('points', d => {
+      const posA = arc.centroid(d); // line insertion in the slice
+      const posB = outerArc.centroid(d); // line break: we use the other arc generator that has been built only for that
+      const posC = outerArc.centroid(d); // Label position = almost the same as posB
+      const midangle = d.startAngle + (d.endAngle - d.startAngle) / 2; // we need the angle to see if the X position will be at the extreme right or extreme left
+      posC[0] = radius * 0.95 * (midangle < Math.PI ? 1 : -1); // multiply by 1 or -1 to put it on the right or on the left
+      return [posA, posB, posC];
+    });
+
+  // Add the polylines between chart and labels:
+  svg
+    .selectAll('allLabels')
+    .data(data_ready)
+    .enter()
+    .append('text')
+    .text(d => d.data.key)
+    .attr('transform', d => {
+      const pos = outerArc.centroid(d);
+      const midangle = d.startAngle + (d.endAngle - d.startAngle) / 2;
+      pos[0] = radius * 0.99 * (midangle < Math.PI ? 1 : -1);
+      return 'translate(' + pos + ')';
+    })
+    .style('text-anchor', d => {
+      const midangle = d.startAngle + (d.endAngle - d.startAngle) / 2;
+      return midangle < Math.PI ? 'start' : 'end';
+    });
 
   fs.writeFileSync(path.resolve(report.output), d3n.svgString());
 }

@@ -46,3 +46,34 @@ reportCalendarTeam:
     output: ./others.svg
     compareTeams:
       - team
+
+# NOT IMPLEMENTED
+reportCalendarUser:
+  - user: Maxim Karpov
+    limit: 20
+    output: ./mkarpov.svg
+  - user: Maxim Karpov
+    repositories:
+      - git-log-calendar-teams
+    output: ./mkarpov-git-log.svg
+
+# NOT IMPLEMENTED
+reportDonutUser:
+  - users:
+      - Maxim Karpov
+      - _others_
+    output: ./mkarpov-total.svg
+  - users:
+      - dan.abramov@gmail.com
+      - _others_
+    repositories:
+      - react
+    output: ./danabramov-react-total.svg
+  - limit: 365
+    repositories:
+      - react
+    output: ./react-year.svg
+
+# NOT IMPLEMENTED
+reportMapUser:
+  output: ./connections.svg
