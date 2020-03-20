@@ -33,6 +33,8 @@ const MAP_REPORT_WIDTH = 800;
 const MAP_REPORT_LABEL_WIDTH = 200;
 const DOT_COLOR = '#0095ff';
 
+const DEFAULT_EVALUATE = item => item.linesChanged;
+
 // Export API
 module.exports = {
   collect,
@@ -43,17 +45,24 @@ module.exports = {
 // Load Config from YAML (Required)
 async function getConfig() {
   const configPath = path.resolve(process.env.GIT_LOG_CONFIG_PATH || './git-log-config.yml');
+  let config;
   if (fs.existsSync(configPath)) {
     const file = fs.readFileSync(configPath, 'utf8');
-    return YAML.parse(file);
+    config = YAML.parse(file);
   } else {
     const p = `\\\\rjfs2\\corpshare$\\GitStats\\git-log-config.yml`;
     if (!fs.existsSync(p)) {
       throw Error('Config file has not been found: git-log-config.yml');
     }
     const file = fs.readFileSync(p, 'utf8');
-    return YAML.parse(file);
+    config = YAML.parse(file);
   }
+  if (config.evaluate) {
+    config.evaluate = Function('"use strict";return (' + config.evaluate + ')')();
+  } else {
+    config.evaluate = DEFAULT_EVALUATE;
+  }
+  return config;
 }
 
 // Format repository name to a file name
@@ -320,7 +329,7 @@ function reportDonutUser(fileMap, config) {
               }
               if (!report.limit) {
                 // Compare by total contributed lines (added + removed)
-                data[userKey] += author.linesChanged;
+                data[userKey] += config.evaluate(author);
               } else {
                 const now = new Date();
                 const nowTimestamp = +now;
@@ -332,7 +341,7 @@ function reportDonutUser(fileMap, config) {
                   const timestamp = +date;
                   if (timestamp <= nowTimestamp && timestamp >= limitTimestamp) {
                     // Compare by total contributed lines (added + removed)
-                    data[userKey] += author.map[dateString].linesChanged;
+                    data[userKey] += config.evaluate(author.map[dateString]);
                   }
                 }
               }
@@ -380,7 +389,7 @@ function collectTeamDates(report, fileMap, config) {
               const timestamp = +date;
               if (!report.limit || (timestamp <= nowTimestamp && timestamp >= limitTimestamp)) {
                 // Compare by total contributed lines (added + removed)
-                teamDates[team.name][dateString] = (teamDates[team.name][dateString] || 0) + author.map[dateString].linesChanged;
+                teamDates[team.name][dateString] = (teamDates[team.name][dateString] || 0) + config.evaluate(author.map[dateString]);
               }
             }
           }
@@ -416,7 +425,7 @@ function collectUserDates(report, fileMap, config) {
             const timestamp = +date;
             if (!report.limit || (timestamp <= nowTimestamp && timestamp >= limitTimestamp)) {
               // Compare by total contributed lines (added + removed)
-              userDates[user.name][dateString] = (userDates[user.name][dateString] || 0) + author.map[dateString].linesChanged;
+              userDates[user.name][dateString] = (userDates[user.name][dateString] || 0) + config.evaluate(author.map[dateString]);
             }
           }
         }

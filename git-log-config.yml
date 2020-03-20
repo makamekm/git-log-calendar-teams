@@ -3,6 +3,7 @@ cleanTmp: false
 debug: true
 tmpDir: ./repositories
 statsDir: ./
+evaluate: item => item.linesChanged
 
 repositories:
   - url: https://github.com/makamekm/git-log-calendar-teams.git
