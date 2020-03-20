@@ -7,6 +7,7 @@ const fs = {
   ...require('fs-extra')
 };
 const d3Node = require('d3-node');
+const d3Array = require('d3-array');
 
 // Collect Stats
 const DIVIDER = '-_-';
@@ -222,6 +223,44 @@ async function report() {
 
   // 4) reportMapUser
   reportMapUser(fileMap, config);
+
+  // 5) reportRunningRepositories
+  reportRunningRepositories(fileMap, config);
+}
+
+function reportRunningRepositories(fileMap, config) {
+  for (let report of config.reportRunningRepository || []) {
+    const isAllRepositories = !report.repositories;
+    const data = [];
+    const now = new Date();
+    const nowTimestamp = +now;
+    const limit = new Date();
+    if (report.limit) limit.setDate(limit.getDate() - report.limit);
+    const limitTimestamp = +limit;
+
+    for (let repository of config.repositories) {
+      const repositoryName = getRepositoryName(repository);
+      if (fileMap[repositoryName] && (isAllRepositories || report.repositories.includes(repository.name))) {
+        for (let author of fileMap[repositoryName].data) {
+          if (isAuthorBelongToRepository(repository, author.email, author.name)) {
+            for (let dateString in author.map) {
+              const date = new Date(dateString);
+              const timestamp = +date;
+              if (!report.limit || (timestamp <= nowTimestamp && timestamp >= limitTimestamp)) {
+                data.push({
+                  name: repositoryName,
+                  date: dateString,
+                  value: config.evaluate(author.map[dateString])
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    generateRunningReport(data, report, config);
+  }
 }
 
 function reportMapUser(fileMap, config) {
@@ -857,6 +896,118 @@ function generateMapReport(data, report, config) {
     .style('alignment-baseline', 'middle')
     .attr('font-family', 'Arial')
     .attr('font-size', 12);
+
+  fs.writeFileSync(path.resolve(report.output), d3n.svgString());
+}
+
+function prepareRunningData(source, report, config) {
+  const d3n = new d3Node();
+  const d3 = { ...d3Array, ...d3n.d3 };
+
+  source = source.map(s => ({
+    ...s,
+    date: new Date(s.date)
+  }));
+  const dates = Array.from(d3.group(source, d => +d.date).keys()).sort(d3.ascending);
+  return {
+    dates: dates.map(d => new Date(d)),
+    series: d3
+      .groups(source, d => d.name)
+      .map(([name, values]) => {
+        const value = new Map(values.map(d => [+d.date, d.value]));
+        return { name, values: dates.map(d => value.get(d)) };
+      })
+  };
+}
+
+// Generate running report
+function generateRunningReport(source, report, config) {
+  const d3n = new d3Node();
+  const d3 = d3n.d3;
+
+  if (source.length === 0) {
+    fs.removeSync(path.resolve(report.output));
+    return;
+  }
+
+  const data = prepareRunningData(source, report, config);
+
+  const overlap = report.overlap || 3;
+  const lineSpace = report.lineSpace || 14;
+  const margin = {
+    top: report.marginTop || 60,
+    right: report.marginRight || 20,
+    bottom: report.marginBottom || 30,
+    left: report.marginLeft || 120
+  };
+  const height = data.series.length * lineSpace + margin.top + margin.bottom;
+  const width = report.width || 1000;
+
+  // append the svg object to the body of the page
+  const svg = d3n.createSVG(width, height).attr('style', `background-color: ${report.backgroundColor || 'transparent'}`);
+
+  const x = d3
+    .scaleTime()
+    .domain(d3.extent(data.dates))
+    .range([margin.left, width - margin.right]);
+
+  const y = d3
+    .scalePoint()
+    .domain(data.series.map(d => d.name))
+    .range([margin.top, height - margin.bottom]);
+
+  const z = d3
+    .scaleLinear()
+    .domain([0, d3.max(data.series, d => d3.max(d.values))])
+    .nice()
+    .range([0, -overlap * y.step()]);
+
+  const area = d3
+    .area()
+    .curve(d3.curveBasis)
+    .defined(d => !isNaN(d))
+    .x((d, i) => x(data.dates[i]))
+    .y0(0)
+    .y1(d => z(d));
+
+  svg
+    .append('g')
+    .attr('transform', `translate(0,${height - margin.bottom})`)
+    .call(
+      d3
+        .axisBottom(x)
+        .ticks(width / 80)
+        .tickSizeOuter(0)
+    );
+  svg
+    .append('g')
+    .attr('transform', `translate(${margin.left},0)`)
+    .call(
+      d3
+        .axisLeft(y)
+        .tickSize(0)
+        .tickPadding(4)
+    )
+    .call(g => g.select('.domain').remove());
+
+  const group = svg
+    .append('g')
+    .selectAll('g')
+    .data(data.series)
+    .join('g')
+    .attr('transform', d => `translate(0,${y(d.name) + 1})`);
+
+  const line = area.lineY1();
+
+  group
+    .append('path')
+    .attr('fill', '#ddd')
+    .attr('d', d => area(d.values));
+  group
+    .append('path')
+    .attr('fill', 'none')
+    .attr('stroke', 'black')
+    .attr('d', d => line(d.values));
 
   fs.writeFileSync(path.resolve(report.output), d3n.svgString());
 }

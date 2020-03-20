@@ -105,3 +105,11 @@ reportDonutUser:
 
 reportMapUser:
   output: ./connections.svg
+
+reportRunningRepository:
+  - limit: 30
+    # repositories:
+    #   - react
+    output: ./repositories.svg
+  - limit: 365
+    output: ./year-repositories.svg
