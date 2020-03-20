@@ -28,6 +28,11 @@ const DONUT_HEIGHT = 600;
 const DONUT_MARGIN = 40;
 const OTHERS_LABEL = '*';
 
+// Map Report
+const MAP_REPORT_WIDTH = 800;
+const MAP_REPORT_LABEL_WIDTH = 200;
+const DOT_COLOR = '#0095ff';
+
 // Export API
 module.exports = {
   collect,
@@ -205,6 +210,71 @@ async function report() {
 
   // 3) reportDonutUser
   reportDonutUser(fileMap, config);
+
+  // 4) reportMapUser
+  reportMapUser(fileMap, config);
+}
+
+function reportMapUser(fileMap, config) {
+  const report = config.reportMapUser;
+  if (report) {
+    const isAllRepositories = !report.repositories;
+
+    const userRepositoryMap = {};
+
+    for (let user of config.users) {
+      userRepositoryMap[user.name] = [];
+    }
+
+    for (let repository of config.repositories) {
+      const repositoryName = getRepositoryName(repository);
+      if (fileMap[repositoryName] && (isAllRepositories || report.repositories.includes(repository.name))) {
+        for (let author of fileMap[repositoryName].data) {
+          const user = getAuthor(config.users, author.email, author.name);
+          if (user && isAuthorBelongToRepository(repository, author.email, author.name)) {
+            if (user && !userRepositoryMap[user.name].includes(repositoryName)) {
+              userRepositoryMap[user.name].push(repositoryName);
+            }
+          }
+        }
+      }
+    }
+
+    const data = {
+      nodes: [],
+      links: []
+    };
+
+    for (const name in userRepositoryMap) {
+      data.nodes.push({
+        id: name,
+        name: name
+      });
+      for (const repositoryName of userRepositoryMap[name]) {
+        const users = findUsersHasRepositories(userRepositoryMap, repositoryName);
+        for (const user of users) {
+          if (users !== name) {
+            data.links.push({
+              source: name,
+              target: user
+            });
+          }
+        }
+      }
+    }
+
+    generateMapReport(data, report, config);
+  }
+}
+
+function findUsersHasRepositories(userRepositoryMap, repositoryName) {
+  const users = [];
+  for (const name in userRepositoryMap) {
+    if (userRepositoryMap[name].includes(repositoryName)) {
+      users.push(name);
+    }
+  }
+  return users;
 }
 
 // Check if the pair of email & name belongs to a reposoroty, but excluding the specifyed occurrences
@@ -223,7 +293,6 @@ function getAuthor(users, email, name) {
 }
 
 function reportDonutUser(fileMap, config) {
-  // reportDonutUser
   for (let report of config.reportDonutUser || []) {
     const isAllUsers = !report.users;
     const isAllRepositories = !report.repositories;
@@ -576,8 +645,6 @@ function generateCalendarReport(dates, comparedValueArray, report, config) {
 }
 
 // Generate donut report
-
-// Create dummy data
 function generateDonutReport(data, report, config) {
   const d3n = new d3Node();
   const d3 = d3n.d3;
@@ -674,6 +741,113 @@ function generateDonutReport(data, report, config) {
       const midangle = d.startAngle + (d.endAngle - d.startAngle) / 2;
       return midangle < Math.PI ? 'start' : 'end';
     });
+
+  fs.writeFileSync(path.resolve(report.output), d3n.svgString());
+}
+
+// Generate map report
+function generateMapReport(data, report, config) {
+  const d3n = new d3Node();
+  const d3 = d3n.d3;
+
+  if (data.nodes.length === 0) {
+    fs.removeSync(path.resolve(report.output));
+    return;
+  }
+
+  // set the dimensions and margins of the graph
+  const lineHeight = report.lineHeight || 16;
+  const lineSpace = report.lineSpace || 16;
+  const labelWidth = report.labelWidth || MAP_REPORT_LABEL_WIDTH;
+
+  const margin = {
+    top: report.marginTop || 20,
+    right: report.marginRight || 30,
+    bottom: report.marginBottom || 20,
+    left: report.marginLeft || 30
+  };
+  const width = (report.width || MAP_REPORT_WIDTH) - margin.left - margin.right;
+  const height = data.nodes.length * lineHeight + (data.nodes.length - 1) * lineSpace;
+
+  // append the svg object to the body of the page
+  const svg = d3n
+    .createSVG(width + margin.left + margin.right, height + margin.top + margin.bottom)
+    .attr('style', `background-color: ${report.backgroundColor || 'transparent'}`)
+    .append('g')
+    .attr('transform', 'translate(' + margin.left + ',' + margin.top + ')');
+
+  // List of node names
+  const allNodes = data.nodes.map(d => d.name);
+
+  // A linear scale to position the nodes on the X axis
+  const y = d3
+    .scalePoint()
+    .range([0, height])
+    .domain(allNodes);
+
+  // Add links between nodes. Here is the tricky part.
+  // In my input data, links are provided between nodes -id-, NOT between node names.
+  // So I have to do a link between this id and the name
+  const idToNode = {};
+  data.nodes.forEach(n => {
+    idToNode[n.id] = n;
+  });
+  // Cool, now if I do idToNode["2"].name I've got the name of the node with id 2
+
+  // Add the links
+  svg
+    .selectAll('mylinks')
+    .data(data.links)
+    .enter()
+    .append('path')
+    .attr('d', d => {
+      start = y(idToNode[d.source].name); // X position of start node on the X axis
+      end = y(idToNode[d.target].name); // X position of end node
+      return [
+        'M',
+        20 + lineHeight / 2 + labelWidth,
+        start, // the arc starts at the coordinate x=start, y=height-30 (where the starting node is)
+        'A', // This means we're gonna build an elliptical arc
+        ((start - end) / 2) * 4,
+        ',', // Next 2 lines are the coordinates of the inflexion point. Height of this point is proportional with start - end distance
+        (start - end) / 2,
+        0,
+        0,
+        ',',
+        start < end ? 1 : 0,
+        20 + lineHeight / 2 + labelWidth,
+        ',',
+        end
+      ] // We always want the arc on top. So if end is before start, putting 0 here turn the arc upside down.
+        .join(' ');
+    })
+    .style('fill', 'none')
+    .attr('stroke', 'black');
+
+  // Add the circle for the nodes
+  svg
+    .selectAll('mynodes')
+    .data(data.nodes)
+    .enter()
+    .append('circle')
+    .attr('cx', 30 + labelWidth)
+    .attr('cy', d => y(d.name))
+    .attr('r', lineHeight / 2)
+    .style('fill', report.color || DOT_COLOR);
+
+  // And give them a label
+  svg
+    .selectAll('mylabels')
+    .data(data.nodes)
+    .enter()
+    .append('text')
+    .attr('x', labelWidth)
+    .attr('y', d => y(d.name))
+    .text(d => d.name)
+    .style('text-anchor', 'end')
+    .style('alignment-baseline', 'middle')
+    .attr('font-family', 'Arial')
+    .attr('font-size', 12);
 
   fs.writeFileSync(path.resolve(report.output), d3n.svgString());
 }

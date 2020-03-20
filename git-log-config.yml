@@ -27,6 +27,31 @@ users:
   - name: Dan Abramov
     associations:
       - dan.abramov@gmail.com
+  - name: Dominic Gannaway
+    associations:
+      - dominic gannaway
+  - name: Andrew Clark
+    associations:
+      - andrew clark
+  - name: Sebastian Markbåge
+    associations:
+      - sebastian markbåge
+  - name: Brian Vaughn
+    associations:
+      - bvaughn@fb.com
+      - brian vaughn
+  - name: Sunil Pai
+    associations:
+      - threepointone@fb.com
+      - sunil pai
+  - name: Nicolas Gallagher
+    associations:
+      - necolas@fb.com
+      - nicolas gallagher
+  - name: Will Douglas
+    associations:
+      - willygdouglas@gmail.com
+      - will douglas
 
 teams:
   - name: team
@@ -77,6 +102,5 @@ reportDonutUser:
       - react
     output: ./react-year.svg
 
-# NOT IMPLEMENTED
 reportMapUser:
   output: ./connections.svg
