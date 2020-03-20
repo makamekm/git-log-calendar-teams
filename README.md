@@ -7,7 +7,7 @@ The tool generates git calendar logs depending on teams' activities
 npm i -g git-log-calendar-teams
 ```
 
-Or open peleases and download executable file
+Or open releases and download executable file
 
 ## How to run
 
