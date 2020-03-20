@@ -26,6 +26,7 @@ const WEEKS_IN_A_YEAR = 53;
 const DONUT_WIDTH = 900;
 const DONUT_HEIGHT = 600;
 const DONUT_MARGIN = 40;
+const OTHERS_LABEL = '*';
 
 // Export API
 module.exports = {
@@ -199,7 +200,10 @@ async function report() {
   // 1) reportCalendarTeam
   reportCalendarTeam(fileMap, config);
 
-  // 2) reportDonutUser
+  // 2) reportCalendarUser
+  reportCalendarUser(fileMap, config);
+
+  // 3) reportDonutUser
   reportDonutUser(fileMap, config);
 }
 
@@ -238,7 +242,7 @@ function reportDonutUser(fileMap, config) {
             let shouldLogUser =
               isAllUsers || (user ? report.users.includes(user.name) : report.users.includes(email) || report.users.includes(name));
             if (!shouldLogUser && isOthers) {
-              userKey = '*';
+              userKey = report.othersLabel || OTHERS_LABEL;
               shouldLogUser = true;
             }
             if (shouldLogUser) {
@@ -282,7 +286,7 @@ function reportDonutUser(fileMap, config) {
   }
 }
 
-function reportCalendarTeam(fileMap, config) {
+function collectTeamDates(report, fileMap, config) {
   const teamDates = {};
   for (let team of config.teams) {
     teamDates[team.name] = {};
@@ -295,9 +299,18 @@ function reportCalendarTeam(fileMap, config) {
       if (fileMap[repositoryName] && fileMap[repositoryName].data) {
         for (let author of fileMap[repositoryName].data) {
           if (isAuthorBelongToRepositoryAndTeam(repository, team, config.users, author.email, author.name)) {
-            for (let key in author.map) {
-              // Compare by total contributed lines (added + removed)
-              teamDates[team.name][key] = (teamDates[team.name][key] || 0) + author.map[key].linesChanged;
+            const now = new Date();
+            const nowTimestamp = +now;
+            const limit = new Date();
+            if (report.limit) limit.setDate(limit.getDate() - report.limit);
+            const limitTimestamp = +limit;
+            for (let dateString in author.map) {
+              const date = new Date(dateString);
+              const timestamp = +date;
+              if (!report.limit || (timestamp <= nowTimestamp && timestamp >= limitTimestamp)) {
+                // Compare by total contributed lines (added + removed)
+                teamDates[team.name][dateString] = (teamDates[team.name][dateString] || 0) + author.map[dateString].linesChanged;
+              }
             }
           }
         }
@@ -305,18 +318,73 @@ function reportCalendarTeam(fileMap, config) {
     }
   }
 
-  // reportCalendarTeam
-  for (let report of config.reportCalendarTeam || []) {
-    const comparedData = getComparedData(report, teamDates);
-    generateTeamCalendarReport(teamDates[report.team], comparedData, report, config);
+  return teamDates;
+}
+
+function collectUserDates(report, fileMap, config) {
+  const userDates = {};
+
+  for (let user of config.users) {
+    userDates[user.name] = {};
+  }
+
+  // Collect users data
+  for (let repository of config.repositories) {
+    const repositoryName = getRepositoryName(repository);
+    if (fileMap[repositoryName] && fileMap[repositoryName].data) {
+      for (let author of fileMap[repositoryName].data) {
+        const user = getAuthor(config.users, author.email, author.name);
+        if (user && isAuthorBelongToRepository(repository, author.email, author.name)) {
+          const now = new Date();
+          const nowTimestamp = +now;
+          const limit = new Date();
+          if (report.limit) limit.setDate(limit.getDate() - report.limit);
+          const limitTimestamp = +limit;
+          for (let dateString in author.map) {
+            const date = new Date(dateString);
+            const timestamp = +date;
+            if (!report.limit || (timestamp <= nowTimestamp && timestamp >= limitTimestamp)) {
+              // Compare by total contributed lines (added + removed)
+              userDates[user.name][dateString] = (userDates[user.name][dateString] || 0) + author.map[dateString].linesChanged;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return userDates;
+}
+
+function reportCalendarUser(fileMap, config) {
+  for (let report of config.reportCalendarUser || []) {
+    const teamDates = collectTeamDates(report, fileMap, config);
+    const userDates = collectUserDates(report, fileMap, config);
+    const comparedData = [
+      ...getComparedData(teamDates, report.compareTeams || []),
+      ...getComparedData(userDates, report.compareUsers || [])
+    ];
+    generateCalendarReport(userDates[report.user], comparedData, report, config);
   }
 }
 
-function getComparedData(report, dates) {
+function reportCalendarTeam(fileMap, config) {
+  for (let report of config.reportCalendarTeam || []) {
+    const teamDates = collectTeamDates(report, fileMap, config);
+    const userDates = collectUserDates(report, fileMap, config);
+    const comparedData = [
+      ...getComparedData(teamDates, report.compareTeams || []),
+      ...getComparedData(userDates, report.compareUsers || [])
+    ];
+    generateCalendarReport(teamDates[report.team], comparedData, report, config);
+  }
+}
+
+function getComparedData(dates, compareData) {
   const comparedData = [];
-  for (const compareTeamName of report.compareTeams || []) {
-    for (const key in dates[compareTeamName]) {
-      comparedData.push(dates[compareTeamName][key]);
+  for (const compareName of compareData) {
+    for (const dateString in dates[compareName]) {
+      comparedData.push(dates[compareName][dateString]);
     }
   }
   return comparedData;
@@ -325,8 +393,8 @@ function getComparedData(report, dates) {
 function normalizeData(dates) {
   let data = [];
 
-  for (let key in dates) {
-    data.push({ Date: key, Value: dates[key] });
+  for (let dateString in dates) {
+    data.push({ Date: dateString, Value: dates[dateString] });
   }
 
   data = data.sort((a, b) => new Date(a.Date) - new Date(b.Date));
@@ -431,7 +499,7 @@ function normalizeDataForCalendarReport(dates, comparedValueArray) {
 }
 
 // Generate calendar report
-function generateTeamCalendarReport(dates, comparedValueArray, report, config) {
+function generateCalendarReport(dates, comparedValueArray, report, config) {
   const d3n = new d3Node();
   const d3 = d3n.d3;
 

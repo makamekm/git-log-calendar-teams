@@ -33,22 +33,32 @@ teams:
     users:
       - Dan Abramov
       - Maxim Karpov
-    # exclude:
-    #   - cicd
   - name: others
     invert: true
     # exclude:
-    #   - cicd
+    #   - cicd # if it cannon be done ib repository exclude
 
 reportCalendarTeam:
   - team: team
     output: ./team.svg
     compareTeams:
       - others
+    limit: 180
   - team: others
     output: ./others.svg
     compareTeams:
       - team
+
+reportCalendarUser:
+  - user: Maxim Karpov
+    limit: 60
+    output: ./mkarpov.svg
+  - user: Maxim Karpov
+    repositories:
+      - git-log-calendar-teams
+    compareTeams:
+      - team
+    output: ./mkarpov-git-log.svg
 
 reportDonutUser:
   - users:
@@ -66,16 +76,6 @@ reportDonutUser:
     repositories:
       - react
     output: ./react-year.svg
-
-# NOT IMPLEMENTED
-reportCalendarUser:
-  - user: Maxim Karpov
-    limit: 20
-    output: ./mkarpov.svg
-  - user: Maxim Karpov
-    repositories:
-      - git-log-calendar-teams
-    output: ./mkarpov-git-log.svg
 
 # NOT IMPLEMENTED
 reportMapUser:
