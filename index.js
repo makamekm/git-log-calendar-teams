@@ -564,7 +564,9 @@ function generateDonutReport(data, report, config) {
     .attr('fill', d => color(d.data.key))
     .attr('stroke', 'white')
     .style('stroke-width', '2px')
-    .style('opacity', 0.7);
+    .style('opacity', 0.7)
+    .append('title')
+    .text(d => `${d.data.key}: ${d.value.toFixed(2)}`);
 
   // Add the polylines between chart and labels:
   svg
