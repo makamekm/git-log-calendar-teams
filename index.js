@@ -250,6 +250,7 @@ function reportDonutUser(fileMap, config) {
                 data[userKey] = 0;
               }
               if (!report.limit) {
+                // Compare by total contributed lines (added + removed)
                 data[userKey] += author.linesChanged;
               } else {
                 const now = new Date();
@@ -261,6 +262,7 @@ function reportDonutUser(fileMap, config) {
                   const date = new Date(dateString);
                   const timestamp = +date;
                   if (timestamp <= nowTimestamp && timestamp >= limitTimestamp) {
+                    // Compare by total contributed lines (added + removed)
                     data[userKey] += author.map[dateString].linesChanged;
                   }
                 }
@@ -356,26 +358,27 @@ function collectUserDates(report, fileMap, config) {
   return userDates;
 }
 
+function getCalendarData(report, fileMap, config) {
+  const teamDates = collectTeamDates(report, fileMap, config);
+  const userDates = collectUserDates(report, fileMap, config);
+  const comparedData = [...getComparedData(teamDates, report.compareTeams || []), ...getComparedData(userDates, report.compareUsers || [])];
+  return {
+    teamDates,
+    userDates,
+    comparedData
+  };
+}
+
 function reportCalendarUser(fileMap, config) {
   for (let report of config.reportCalendarUser || []) {
-    const teamDates = collectTeamDates(report, fileMap, config);
-    const userDates = collectUserDates(report, fileMap, config);
-    const comparedData = [
-      ...getComparedData(teamDates, report.compareTeams || []),
-      ...getComparedData(userDates, report.compareUsers || [])
-    ];
+    const { userDates, comparedData } = getCalendarData(report, fileMap, config);
     generateCalendarReport(userDates[report.user], comparedData, report, config);
   }
 }
 
 function reportCalendarTeam(fileMap, config) {
   for (let report of config.reportCalendarTeam || []) {
-    const teamDates = collectTeamDates(report, fileMap, config);
-    const userDates = collectUserDates(report, fileMap, config);
-    const comparedData = [
-      ...getComparedData(teamDates, report.compareTeams || []),
-      ...getComparedData(userDates, report.compareUsers || [])
-    ];
+    const { teamDates, comparedData } = getCalendarData(report, fileMap, config);
     generateCalendarReport(teamDates[report.team], comparedData, report, config);
   }
 }
