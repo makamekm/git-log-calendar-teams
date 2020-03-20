@@ -61,7 +61,7 @@ teams:
   - name: others
     invert: true
     # exclude:
-    #   - cicd # if it cannon be done ib repository exclude
+    #   - cicd # if it cannon be done with repository exclude
 
 reportCalendarTeam:
   - team: team
