@@ -525,6 +525,7 @@ function generateDonutReport(data, report, config) {
 
   const svg = d3n
     .createSVG(width, height)
+    .attr('style', `background-color: ${report.backgroundColor || 'transparent'}`)
     .append('g')
     .attr('transform', 'translate(' + width / 2 + ',' + height / 2 + ')');
 

@@ -50,17 +50,6 @@ reportCalendarTeam:
     compareTeams:
       - team
 
-# NOT IMPLEMENTED
-reportCalendarUser:
-  - user: Maxim Karpov
-    limit: 20
-    output: ./mkarpov.svg
-  - user: Maxim Karpov
-    repositories:
-      - git-log-calendar-teams
-    output: ./mkarpov-git-log.svg
-
-# NOT IMPLEMENTED
 reportDonutUser:
   - users:
       - Maxim Karpov
@@ -77,6 +66,16 @@ reportDonutUser:
     repositories:
       - react
     output: ./react-year.svg
+
+# NOT IMPLEMENTED
+reportCalendarUser:
+  - user: Maxim Karpov
+    limit: 20
+    output: ./mkarpov.svg
+  - user: Maxim Karpov
+    repositories:
+      - git-log-calendar-teams
+    output: ./mkarpov-git-log.svg
 
 # NOT IMPLEMENTED
 reportMapUser:
