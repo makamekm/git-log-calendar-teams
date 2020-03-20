@@ -24,11 +24,14 @@ users:
       - makame@mail.ru
       - Maxim Karpov
       - Karpov Maxim
+  - name: Dan Abramov
+    associations:
+      - dan.abramov@gmail.com
 
 teams:
   - name: team
     users:
-      - dan.abramov@gmail.com
+      - Dan Abramov
       - Maxim Karpov
     # exclude:
     #   - cicd
@@ -61,15 +64,16 @@ reportCalendarUser:
 reportDonutUser:
   - users:
       - Maxim Karpov
-      - _others_
+    others: true
     output: ./mkarpov-total.svg
   - users:
-      - dan.abramov@gmail.com
-      - _others_
+      - Dan Abramov
+    others: true
     repositories:
       - react
     output: ./danabramov-react-total.svg
   - limit: 365
+    top: 5
     repositories:
       - react
     output: ./react-year.svg

@@ -23,8 +23,8 @@ const MARGIN_RIGHT = 10;
 const WEEKS_IN_A_YEAR = 53;
 
 // Donut Report
-const DONUT_WIDTH = 450;
-const DONUT_HEIGHT = 450;
+const DONUT_WIDTH = 900;
+const DONUT_HEIGHT = 600;
 const DONUT_MARGIN = 40;
 
 // Export API
@@ -198,6 +198,88 @@ async function report() {
 
   // 1) reportCalendarTeam
   reportCalendarTeam(fileMap, config);
+
+  // 2) reportDonutUser
+  reportDonutUser(fileMap, config);
+}
+
+// Check if the pair of email & name belongs to a reposoroty, but excluding the specifyed occurrences
+function isAuthorBelongToRepository(repository, email, name) {
+  name = name.toLowerCase();
+  email = email.toLowerCase();
+  const excludeRepository = repository.exclude && (repository.exclude.includes(name) || repository.exclude.includes(email));
+  return !repository.exclude || !excludeRepository;
+}
+
+// Check if the pair of email & name belongs to a reposoroty & team, but excluding the specifyed occurrences
+function getAuthor(users, email, name) {
+  name = name.toLowerCase();
+  email = email.toLowerCase();
+  return users.find(u => u.associations.includes(email) || u.associations.includes(name));
+}
+
+function reportDonutUser(fileMap, config) {
+  // reportDonutUser
+  for (let report of config.reportDonutUser || []) {
+    const isAllUsers = !report.users;
+    const isAllRepositories = !report.repositories;
+    const isOthers = report.others;
+    let data = {};
+
+    for (let repository of config.repositories) {
+      const repositoryName = getRepositoryName(repository);
+      if (fileMap[repositoryName] && (isAllRepositories || report.repositories.includes(repository.name))) {
+        for (let author of fileMap[repositoryName].data) {
+          if (isAuthorBelongToRepository(repository, author.email, author.name)) {
+            const user = getAuthor(config.users, author.email, author.name);
+            const email = author.email.toLowerCase();
+            const name = author.name.toLowerCase();
+            let userKey = (user && user.name) || `${email} ${name}`;
+            let shouldLogUser =
+              isAllUsers || (user ? report.users.includes(user.name) : report.users.includes(email) || report.users.includes(name));
+            if (!shouldLogUser && isOthers) {
+              userKey = '*';
+              shouldLogUser = true;
+            }
+            if (shouldLogUser) {
+              if (!data[userKey]) {
+                data[userKey] = 0;
+              }
+              if (!report.limit) {
+                data[userKey] += author.linesChanged;
+              } else {
+                const now = new Date();
+                const nowTimestamp = +now;
+                const limit = new Date();
+                limit.setDate(limit.getDate() - report.limit);
+                const limitTimestamp = +limit;
+                for (let dateString in author.map) {
+                  const date = new Date(dateString);
+                  const timestamp = +date;
+                  if (timestamp <= nowTimestamp && timestamp >= limitTimestamp) {
+                    data[userKey] += author.map[dateString].linesChanged;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (report.top) {
+      const newData = {};
+      Object.keys(data)
+        .sort((a, b) => data[b] - data[a])
+        .splice(0, report.top)
+        .forEach(key => {
+          newData[key] = data[key];
+        });
+      data = newData;
+    }
+
+    generateDonutReport(data, report, config);
+  }
 }
 
 function reportCalendarTeam(fileMap, config) {
@@ -226,7 +308,7 @@ function reportCalendarTeam(fileMap, config) {
   // reportCalendarTeam
   for (let report of config.reportCalendarTeam || []) {
     const comparedData = getComparedData(report, teamDates);
-    generateTeamCalendarReport(teamDates[report.team], report, comparedData, config);
+    generateTeamCalendarReport(teamDates[report.team], comparedData, report, config);
   }
 }
 
@@ -306,7 +388,7 @@ function normalizeDataWithD3(data) {
   };
 }
 
-function normalizeYearsWithD3(dateValues, compared) {
+function normalizeYearsWithD3(dateValues, comparedValueArray) {
   const d3n = new d3Node();
   const d3 = d3n.d3;
 
@@ -320,8 +402,8 @@ function normalizeYearsWithD3(dateValues, compared) {
   let maxValue = d3.max(values);
   const minValue = 0;
 
-  if (compared.length > 0) {
-    const maxValueCompared = d3.max(compared);
+  if (comparedValueArray.length > 0) {
+    const maxValueCompared = d3.max(comparedValueArray);
     if (maxValueCompared > maxValue) {
       maxValue = maxValueCompared;
     }
@@ -335,10 +417,10 @@ function normalizeYearsWithD3(dateValues, compared) {
   };
 }
 
-function normalizeDataForCalendarReport(dates, compared) {
+function normalizeDataForCalendarReport(dates, comparedValueArray) {
   const data = normalizeData(dates);
   const { dateValues, minYear, maxYear } = normalizeDataWithD3(data);
-  const { years, maxValue, minValue } = normalizeYearsWithD3(dateValues, compared);
+  const { years, maxValue, minValue } = normalizeYearsWithD3(dateValues, comparedValueArray);
   return {
     years,
     minYear,
@@ -349,11 +431,11 @@ function normalizeDataForCalendarReport(dates, compared) {
 }
 
 // Generate calendar report
-function generateTeamCalendarReport(dates, report, compared, config) {
+function generateTeamCalendarReport(dates, comparedValueArray, report, config) {
   const d3n = new d3Node();
   const d3 = d3n.d3;
 
-  const { years, minYear, maxYear, maxValue, minValue } = normalizeDataForCalendarReport(dates, compared);
+  const { years, minYear, maxYear, maxValue, minValue } = normalizeDataForCalendarReport(dates, comparedValueArray);
 
   if (maxYear === 0) {
     fs.removeSync(path.resolve(report.output));
@@ -362,7 +444,7 @@ function generateTeamCalendarReport(dates, report, compared, config) {
 
   const yearGap = Math.abs(maxYear - minYear);
   const [width, height] = [MARGIN_LEFT + CELL_SIZE * (WEEKS_IN_A_YEAR + 1) + MARGIN_RIGHT, YEAR_HEIGHT * (yearGap + 1) + 2 * MARGIN_TOP];
-  const svg = d3n.createSVG(width, height);
+  const svg = d3n.createSVG(width, height).attr('style', `background-color: ${report.backgroundColor || 'transparent'}`);
 
   const group = svg.append('g');
 
@@ -423,20 +505,28 @@ function generateTeamCalendarReport(dates, report, compared, config) {
 }
 
 // Generate donut report
+
+// Create dummy data
 function generateDonutReport(data, report, config) {
   const d3n = new d3Node();
   const d3 = d3n.d3;
 
-  // Create dummy data
-  data = { a: 9, b: 20, c: 30, d: 8, e: 12 };
+  if (Object.keys(data).reduce((a, key) => a + data[key], 0) === 0) {
+    fs.removeSync(path.resolve(report.output));
+    return;
+  }
+
+  const width = report.width || DONUT_WIDTH;
+  const height = report.height || DONUT_HEIGHT;
+  const margin = report.margin || DONUT_MARGIN;
 
   // The radius of the pieplot is half the width or half the height (smallest one). I subtract a bit of margin.
-  const radius = Math.min(DONUT_WIDTH, DONUT_HEIGHT) / 2 - DONUT_MARGIN;
+  const radius = Math.min(width, height) / 2 - margin;
 
   const svg = d3n
     .createSVG(width, height)
     .append('g')
-    .attr('transform', 'translate(' + DONUT_WIDTH / 2 + ',' + DONUT_HEIGHT / 2 + ')');
+    .attr('transform', 'translate(' + width / 2 + ',' + height / 2 + ')');
 
   // set the color scale
   const color = d3
