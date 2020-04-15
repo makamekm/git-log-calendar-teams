@@ -36,6 +36,8 @@ const DOT_COLOR = '#0095ff';
 
 const DEFAULT_EVALUATE = item => item.linesChanged;
 
+let globalConfig = null;
+
 // Export API
 module.exports = {
   collect,
@@ -48,12 +50,17 @@ module.exports = {
   normalizeCalendarData,
   normalizeUserData,
   normalizeRepositoryData,
-  normalizeUserConnectionData
+  normalizeUserConnectionData,
+  setGlobalConfig
 };
 
+function setGlobalConfig(config) {
+  globalConfig = config;
+}
+
 // Read data & config
-async function readData() {
-  const config = await getConfig();
+async function readData(altConfig) {
+  const config = await getConfig(altConfig);
   collectUnusedUsers(config);
 
   const { fileMap } = readStatsFolder(config);
@@ -63,12 +70,18 @@ async function readData() {
 }
 
 // Load Config from YAML (Required)
-async function getConfig() {
+async function getConfig(altConfig) {
   const configPath = path.resolve(process.env.GIT_LOG_CONFIG_PATH || './git-log-config.yml');
-  let config;
+  let config = altConfig || globalConfig;
+
+  if (config) {
+    return config;
+  }
+
   if (fs.existsSync(configPath)) {
     const file = fs.readFileSync(configPath, 'utf8');
     config = YAML.parse(file);
+    config.path = configPath;
   } else {
     const p = `\\\\rjfs2\\corpshare$\\GitStats\\git-log-config.yml`;
     if (!fs.existsSync(p)) {
@@ -76,12 +89,14 @@ async function getConfig() {
     }
     const file = fs.readFileSync(p, 'utf8');
     config = YAML.parse(file);
+    config.path = p;
   }
   if (config.evaluate) {
     config.evaluate = Function('"use strict";return (' + config.evaluate + ')')();
   } else {
     config.evaluate = DEFAULT_EVALUATE;
   }
+
   return config;
 }
 
@@ -138,8 +153,8 @@ function readStatsFolder(config) {
 }
 
 // Remove all obsolete stats by checking timestamp
-async function clean() {
-  const config = await getConfig();
+async function clean(altConfig) {
+  const config = await getConfig(altConfig);
   const { toRemove } = readStatsFolder(config);
   for (let file of toRemove) {
     fs.removeSync(file);
@@ -176,8 +191,8 @@ async function loadRepository(repository, config) {
 }
 
 // Collect  stats from repositories and save them into a stats folder
-async function collect() {
-  const config = await getConfig();
+async function collect(altConfig) {
+  const config = await getConfig(altConfig);
   fs.ensureDirSync(config.statsDir);
 
   for (let repository of config.repositories) {
@@ -225,8 +240,8 @@ function readStats(fileMap, config) {
 }
 
 // Generate calendar reports from teams (reportCalendarTeam)
-async function report() {
-  const { fileMap, config } = await readData();
+async function report(altConfig) {
+  const { fileMap, config } = await readData(altConfig);
 
   // 1) reportCalendarTeam
   reportCalendarTeam(fileMap, config);
