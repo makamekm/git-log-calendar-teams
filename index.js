@@ -40,8 +40,27 @@ const DEFAULT_EVALUATE = item => item.linesChanged;
 module.exports = {
   collect,
   clean,
-  report
+  report,
+  getConfig,
+  collectUnusedUsers,
+  readStatsFolder,
+  readData,
+  normalizeCalendarData,
+  normalizeUserData,
+  normalizeRepositoryData,
+  normalizeUserConnectionData
 };
+
+// Read data & config
+async function readData() {
+  const config = await getConfig();
+  collectUnusedUsers(config);
+
+  const { fileMap } = readStatsFolder(config);
+  readStats(fileMap, config);
+
+  return { fileMap, config };
+}
 
 // Load Config from YAML (Required)
 async function getConfig() {
@@ -107,6 +126,7 @@ function readStatsFolder(config) {
         fileMap[fileKey] = {
           repositoryName,
           file,
+          path: path.resolve(config.statsDir, file),
           timestamp
         };
       } else {
@@ -206,11 +226,7 @@ function readStats(fileMap, config) {
 
 // Generate calendar reports from teams (reportCalendarTeam)
 async function report() {
-  const config = await getConfig();
-  collectUnusedUsers(config);
-
-  const { fileMap } = readStatsFolder(config);
-  readStats(fileMap, config);
+  const { fileMap, config } = await readData();
 
   // 1) reportCalendarTeam
   reportCalendarTeam(fileMap, config);
@@ -230,89 +246,100 @@ async function report() {
 
 function reportRunningRepositories(fileMap, config) {
   for (let report of config.reportRunningRepository || []) {
-    const isAllRepositories = !report.repositories;
-    const data = [];
-    const now = new Date();
-    const nowTimestamp = +now;
-    const limit = new Date();
-    if (report.limit) limit.setDate(limit.getDate() - report.limit);
-    const limitTimestamp = +limit;
-
-    for (let repository of config.repositories) {
-      const repositoryName = getRepositoryName(repository);
-      if (fileMap[repositoryName] && (isAllRepositories || report.repositories.includes(repository.name))) {
-        for (let author of fileMap[repositoryName].data) {
-          if (isAuthorBelongToRepository(repository, author.email, author.name)) {
-            for (let dateString in author.map) {
-              const date = new Date(dateString);
-              const timestamp = +date;
-              if (!report.limit || (timestamp <= nowTimestamp && timestamp >= limitTimestamp)) {
-                data.push({
-                  name: repositoryName,
-                  date: dateString,
-                  value: config.evaluate(author.map[dateString])
-                });
-              }
-            }
-          }
-        }
-      }
-    }
+    const data = normalizeRepositoryData(report, fileMap, config);
 
     generateRunningReport(data, report, config);
   }
 }
 
-function reportMapUser(fileMap, config) {
-  const report = config.reportMapUser;
-  if (report) {
-    const isAllRepositories = !report.repositories;
+function normalizeRepositoryData(report, fileMap, config) {
+  const isAllRepositories = !report.repositories;
+  const data = [];
+  const now = new Date();
+  const nowTimestamp = +now;
+  const limit = new Date();
+  if (report.limit) limit.setDate(limit.getDate() - report.limit);
+  const limitTimestamp = +limit;
 
-    const userRepositoryMap = {};
-
-    for (let user of config.users) {
-      userRepositoryMap[user.name] = [];
-    }
-
-    for (let repository of config.repositories) {
-      const repositoryName = getRepositoryName(repository);
-      if (fileMap[repositoryName] && (isAllRepositories || report.repositories.includes(repository.name))) {
-        for (let author of fileMap[repositoryName].data) {
-          const user = getAuthor(config.users, author.email, author.name);
-          if (user && isAuthorBelongToRepository(repository, author.email, author.name)) {
-            if (user && !userRepositoryMap[user.name].includes(repositoryName)) {
-              userRepositoryMap[user.name].push(repositoryName);
+  for (let repository of config.repositories) {
+    const repositoryName = getRepositoryName(repository);
+    if (fileMap[repositoryName] && (isAllRepositories || report.repositories.includes(repository.name))) {
+      for (let author of fileMap[repositoryName].data) {
+        if (isAuthorBelongToRepository(repository, author.email, author.name)) {
+          for (let dateString in author.map) {
+            const date = new Date(dateString);
+            const timestamp = +date;
+            if (!report.limit || (timestamp <= nowTimestamp && timestamp >= limitTimestamp)) {
+              data.push({
+                name: repositoryName,
+                date: dateString,
+                value: config.evaluate(author.map[dateString])
+              });
             }
           }
         }
       }
     }
+  }
 
-    const data = {
-      nodes: [],
-      links: []
-    };
+  return data;
+}
 
-    for (const name in userRepositoryMap) {
-      data.nodes.push({
-        id: name,
-        name: name
-      });
-      for (const repositoryName of userRepositoryMap[name]) {
-        const users = findUsersHasRepositories(userRepositoryMap, repositoryName);
-        for (const user of users) {
-          if (users !== name) {
-            data.links.push({
-              source: name,
-              target: user
-            });
+function reportMapUser(fileMap, config) {
+  const report = config.reportMapUser;
+  if (report) {
+    const data = normalizeUserConnectionData(report, fileMap, config);
+    generateMapReport(data, report, config);
+  }
+}
+
+function normalizeUserConnectionData(report, fileMap, config) {
+  const isAllRepositories = !report.repositories;
+
+  const userRepositoryMap = {};
+
+  for (let user of config.users) {
+    userRepositoryMap[user.name] = [];
+  }
+
+  for (let repository of config.repositories) {
+    const repositoryName = getRepositoryName(repository);
+    if (fileMap[repositoryName] && (isAllRepositories || report.repositories.includes(repository.name))) {
+      for (let author of fileMap[repositoryName].data) {
+        const user = getAuthor(config.users, author.email, author.name);
+        if (user && isAuthorBelongToRepository(repository, author.email, author.name)) {
+          if (user && !userRepositoryMap[user.name].includes(repositoryName)) {
+            userRepositoryMap[user.name].push(repositoryName);
           }
         }
       }
     }
-
-    generateMapReport(data, report, config);
   }
+
+  const data = {
+    nodes: [],
+    links: []
+  };
+
+  for (const name in userRepositoryMap) {
+    data.nodes.push({
+      id: name,
+      name: name
+    });
+    for (const repositoryName of userRepositoryMap[name]) {
+      const users = findUsersHasRepositories(userRepositoryMap, repositoryName);
+      for (const user of users) {
+        if (users !== name) {
+          data.links.push({
+            source: name,
+            target: user
+          });
+        }
+      }
+    }
+  }
+
+  return data;
 }
 
 function findUsersHasRepositories(userRepositoryMap, repositoryName) {
@@ -342,46 +369,51 @@ function getAuthor(users, email, name) {
 
 function reportDonutUser(fileMap, config) {
   for (let report of config.reportDonutUser || []) {
-    const isAllUsers = !report.users;
-    const isAllRepositories = !report.repositories;
-    const isOthers = report.others;
-    let data = {};
+    const data = normalizeUserData(report, fileMap, config);
+    generateDonutReport(data, report, config);
+  }
+}
 
-    for (let repository of config.repositories) {
-      const repositoryName = getRepositoryName(repository);
-      if (fileMap[repositoryName] && (isAllRepositories || report.repositories.includes(repository.name))) {
-        for (let author of fileMap[repositoryName].data) {
-          if (isAuthorBelongToRepository(repository, author.email, author.name)) {
-            const user = getAuthor(config.users, author.email, author.name);
-            const email = author.email.toLowerCase();
-            const name = author.name.toLowerCase();
-            let userKey = (user && user.name) || `${email} ${name}`;
-            let shouldLogUser =
-              isAllUsers || (user ? report.users.includes(user.name) : report.users.includes(email) || report.users.includes(name));
-            if (!shouldLogUser && isOthers) {
-              userKey = report.othersLabel || OTHERS_LABEL;
-              shouldLogUser = true;
+function normalizeUserData(report, fileMap, config) {
+  const isAllUsers = !report.users;
+  const isAllRepositories = !report.repositories;
+  const isOthers = report.others;
+  let data = {};
+
+  for (let repository of config.repositories) {
+    const repositoryName = getRepositoryName(repository);
+    if (fileMap[repositoryName] && (isAllRepositories || report.repositories.includes(repository.name))) {
+      for (let author of fileMap[repositoryName].data) {
+        if (isAuthorBelongToRepository(repository, author.email, author.name)) {
+          const user = getAuthor(config.users, author.email, author.name);
+          const email = author.email.toLowerCase();
+          const name = author.name.toLowerCase();
+          let userKey = (user && user.name) || `${email} ${name}`;
+          let shouldLogUser =
+            isAllUsers || (user ? report.users.includes(user.name) : report.users.includes(email) || report.users.includes(name));
+          if (!shouldLogUser && isOthers) {
+            userKey = report.othersLabel || OTHERS_LABEL;
+            shouldLogUser = true;
+          }
+          if (shouldLogUser) {
+            if (!data[userKey]) {
+              data[userKey] = 0;
             }
-            if (shouldLogUser) {
-              if (!data[userKey]) {
-                data[userKey] = 0;
-              }
-              if (!report.limit) {
-                // Compare by total contributed lines (added + removed)
-                data[userKey] += config.evaluate(author);
-              } else {
-                const now = new Date();
-                const nowTimestamp = +now;
-                const limit = new Date();
-                limit.setDate(limit.getDate() - report.limit);
-                const limitTimestamp = +limit;
-                for (let dateString in author.map) {
-                  const date = new Date(dateString);
-                  const timestamp = +date;
-                  if (timestamp <= nowTimestamp && timestamp >= limitTimestamp) {
-                    // Compare by total contributed lines (added + removed)
-                    data[userKey] += config.evaluate(author.map[dateString]);
-                  }
+            if (!report.limit) {
+              // Compare by total contributed lines (added + removed)
+              data[userKey] += config.evaluate(author);
+            } else {
+              const now = new Date();
+              const nowTimestamp = +now;
+              const limit = new Date();
+              limit.setDate(limit.getDate() - report.limit);
+              const limitTimestamp = +limit;
+              for (let dateString in author.map) {
+                const date = new Date(dateString);
+                const timestamp = +date;
+                if (timestamp <= nowTimestamp && timestamp >= limitTimestamp) {
+                  // Compare by total contributed lines (added + removed)
+                  data[userKey] += config.evaluate(author.map[dateString]);
                 }
               }
             }
@@ -389,20 +421,20 @@ function reportDonutUser(fileMap, config) {
         }
       }
     }
-
-    if (report.top) {
-      const newData = {};
-      Object.keys(data)
-        .sort((a, b) => data[b] - data[a])
-        .splice(0, report.top)
-        .forEach(key => {
-          newData[key] = data[key];
-        });
-      data = newData;
-    }
-
-    generateDonutReport(data, report, config);
   }
+
+  if (report.top) {
+    const newData = {};
+    Object.keys(data)
+      .sort((a, b) => data[b] - data[a])
+      .splice(0, report.top)
+      .forEach(key => {
+        newData[key] = data[key];
+      });
+    data = newData;
+  }
+
+  return data;
 }
 
 function collectTeamDates(report, fileMap, config) {
@@ -475,7 +507,7 @@ function collectUserDates(report, fileMap, config) {
   return userDates;
 }
 
-function getCalendarData(report, fileMap, config) {
+function normalizeCalendarData(report, fileMap, config) {
   const teamDates = collectTeamDates(report, fileMap, config);
   const userDates = collectUserDates(report, fileMap, config);
   const comparedData = [...getComparedData(teamDates, report.compareTeams || []), ...getComparedData(userDates, report.compareUsers || [])];
@@ -488,14 +520,14 @@ function getCalendarData(report, fileMap, config) {
 
 function reportCalendarUser(fileMap, config) {
   for (let report of config.reportCalendarUser || []) {
-    const { userDates, comparedData } = getCalendarData(report, fileMap, config);
+    const { userDates, comparedData } = normalizeCalendarData(report, fileMap, config);
     generateCalendarReport(userDates[report.user], comparedData, report, config);
   }
 }
 
 function reportCalendarTeam(fileMap, config) {
   for (let report of config.reportCalendarTeam || []) {
-    const { teamDates, comparedData } = getCalendarData(report, fileMap, config);
+    const { teamDates, comparedData } = normalizeCalendarData(report, fileMap, config);
     generateCalendarReport(teamDates[report.team], comparedData, report, config);
   }
 }
