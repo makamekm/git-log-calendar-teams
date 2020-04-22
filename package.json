@@ -1,7 +1,7 @@
 {
   "name": "git-log-calendar-teams",
   "description": "The tool generates git calendar logs depending on teams' activities",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "private": false,
   "author": "Maxim Karpov <makame@mail.ru>",
   "repository": {

@@ -506,7 +506,7 @@ function getAllRepositoryUsers(repositories, fileMap, config) {
 }
 
 function searchCommitMessages(report, fileMap, config) {
-  const result = [];
+  let result = [];
   normalizeDataReduce({ ...report, timestamp: true }, fileMap, config, ({ repository, value, dateString, userKey, message }) => {
     if (message && message.includes(report.query)) {
       result.push({
