@@ -208,7 +208,10 @@ async function collect(altConfig) {
       const authors = await gitRepository.authors();
       if (authors.length > 0) {
         const repositoryAuthorsFileName = `${repositoryName}${DIVIDER}${Date.now().toString()}${STATS_FILE_POSTFIX}`;
-        fs.writeFileSync(path.resolve(config.statsDir, repositoryAuthorsFileName), JSON.stringify(authors, null, 4));
+        const finalPath = path.resolve(config.statsDir, repositoryAuthorsFileName);
+        const tempPath = path.resolve(config.statsDir, repositoryAuthorsFileName + '.temp');
+        fs.writeFileSync(tempPath, JSON.stringify(authors, null, 4));
+        fs.renameSync(tempPath, finalPath);
       }
     } catch (err) {
       if (process.env.DEBUG || config.debug) {
