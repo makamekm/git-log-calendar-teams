@@ -77,7 +77,7 @@ function getStats(lines, collectMessages) {
 }
 
 function getDate(timestamp) {
-  let date = new Date(timestamp * 1000);
+  let date = new Date(timestamp);
   const year = date.getFullYear();
   const month = date.getMonth() + 1;
   const day = date.getDate();
@@ -149,6 +149,7 @@ GitRepository.prototype.authors = async function(collectMessages, ...args) {
     const { line, filesChanged, linesAdded, linesDeleted, linesChanged, message } = getStats(lines, collectMessages);
     let [timestamp, ...author] = line.split(' ');
     author = author.join(' ').trim();
+    timestamp = timestamp * 1000;
     const date = getDate(timestamp);
 
     if (!author) {
@@ -162,7 +163,8 @@ GitRepository.prototype.authors = async function(collectMessages, ...args) {
         linesAdded: 0,
         linesDeleted: 0,
         linesChanged: 0,
-        map: {}
+        map: {},
+        timestampMap: {}
       };
     }
 
@@ -181,8 +183,25 @@ GitRepository.prototype.authors = async function(collectMessages, ...args) {
     authorMap[author].map[date].linesAdded += linesAdded;
     authorMap[author].map[date].linesDeleted += linesDeleted;
     authorMap[author].map[date].linesChanged += linesChanged;
+
     if (collectMessages) {
-      authorMap[author].map[date].message = message;
+      if (!authorMap[author].timestampMap[timestamp]) {
+        authorMap[author].timestampMap[timestamp] = {
+          commits: 0,
+          filesChanged: 0,
+          linesAdded: 0,
+          linesDeleted: 0,
+          linesChanged: 0,
+          message: ''
+        };
+      }
+
+      authorMap[author].timestampMap[timestamp].commits++;
+      authorMap[author].timestampMap[timestamp].filesChanged += filesChanged;
+      authorMap[author].timestampMap[timestamp].linesAdded += linesAdded;
+      authorMap[author].timestampMap[timestamp].linesDeleted += linesDeleted;
+      authorMap[author].timestampMap[timestamp].linesChanged += linesChanged;
+      authorMap[author].timestampMap[timestamp].message = message;
     }
 
     authorMap[author].commits++;

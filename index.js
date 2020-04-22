@@ -57,7 +57,9 @@ module.exports = {
   normalizeTeamData,
   normalizeRepositoryRunningData,
   normalizeUserConnectionData,
-  setGlobalConfig
+  setGlobalConfig,
+  getAllRepositoryUsers,
+  searchCommitMessages
 };
 
 function setGlobalConfig(config) {
@@ -436,27 +438,30 @@ function normalizeDataReduce(report, fileMap, config, callback) {
                 author,
                 repository,
                 userKey,
-                dateString,
                 repositoryName
               });
             } else {
               const limit = new Date();
               limit.setDate(limit.getDate() - report.limit);
               const limitTimestamp = +limit;
-              for (let dateString in author.map) {
-                const date = new Date(dateString);
-                const timestamp = +date;
-                if (timestamp <= nowTimestamp && timestamp >= limitTimestamp) {
-                  // Compare by total contributed lines (added + removed)
-                  callback({
-                    data,
-                    value: config.evaluate(author.map[dateString]),
-                    author,
-                    repository,
-                    userKey,
-                    dateString,
-                    repositoryName
-                  });
+              const map = report.timestamp ? author.timestampMap : author.map;
+              if (map) {
+                for (let dateString in map) {
+                  const date = report.timestamp ? +dateString : new Date(dateString);
+                  const timestamp = +date;
+                  if (timestamp <= nowTimestamp && timestamp >= limitTimestamp) {
+                    // Compare by total contributed lines (added + removed)
+                    callback({
+                      data,
+                      value: config.evaluate(map[dateString]),
+                      author,
+                      repository,
+                      userKey,
+                      dateString,
+                      repositoryName,
+                      message: map[dateString].message
+                    });
+                  }
                 }
               }
             }
@@ -471,6 +476,51 @@ function normalizeDataReduce(report, fileMap, config, callback) {
   }
 
   return data;
+}
+
+function getAllRepositoryUsers(repositories, fileMap, config) {
+  const result = {};
+  for (let repository of config.repositories) {
+    const repositoryName = getRepositoryName(repository);
+    if (fileMap[repositoryName] && (!repositories || repositories.includes(repository.name))) {
+      for (let author of fileMap[repositoryName].data) {
+        const user = getAuthor(config.users, author.email, author.name);
+        const email = author.email.toLowerCase();
+        const name = author.name.toLowerCase();
+        let userKey = (user && user.name) || `${email} ${name} ${UNREGISTERED_SYMBOL}`;
+        if (!result[userKey]) {
+          result[userKey] = {
+            userKey,
+            user,
+            email,
+            name,
+            value: config.evaluate(author)
+          };
+        } else {
+          result[userKey].value += config.evaluate(author);
+        }
+      }
+    }
+  }
+  return Object.values(result);
+}
+
+function searchCommitMessages(report, fileMap, config) {
+  const result = [];
+  normalizeDataReduce({ ...report, timestamp: true }, fileMap, config, ({ repository, value, dateString, userKey, message }) => {
+    if (message && message.includes(report.query)) {
+      result.push({
+        message,
+        userKey,
+        timestamp: dateString,
+        value,
+        repository: repository.name
+      });
+    }
+  });
+  result = result.sort((a, b) => +b.timestamp - +a.timestamp);
+  result = result.splice(0, report.maxMessages || 10);
+  return result;
 }
 
 function normalizeUserData(report, fileMap, config) {
