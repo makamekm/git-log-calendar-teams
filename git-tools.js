@@ -1,6 +1,8 @@
 const spawn = require('spawnback');
 
 const BREAK_LINE = '__brln__ ';
+const COMMIT_START = '__cmstart__';
+const COMMIT_END = '__cmend__';
 
 function GitRepository(path) {
   this.path = path;
@@ -39,9 +41,14 @@ GitRepository.prototype.exec = async function(...args) {
   );
 };
 
-function getStats(lines) {
+function getStats(lines, collectMessages) {
+  let message = '';
+  if (collectMessages && lines) {
+    message = new RegExp(`${COMMIT_START}(.*)${COMMIT_END}`, 'm').exec(lines)[1];
+    lines = lines.replace(new RegExp(`${COMMIT_START}.*${COMMIT_END}`, 'm'), '');
+  }
   lines = lines.split('\n');
-  const [line, _, ...lns] = lines;
+  let [line, _, ...lns] = lines;
   let filesChanged = 0;
   let linesAdded = 0;
   let linesDeleted = 0;
@@ -64,7 +71,8 @@ function getStats(lines) {
     filesChanged,
     linesAdded,
     linesDeleted,
-    linesChanged
+    linesChanged,
+    message
   };
 }
 
@@ -117,10 +125,10 @@ GitRepository.prototype.reset = async function() {
   await this.exec('reset', '--hard', 'HEAD');
 };
 
-GitRepository.prototype.authors = async function(...args) {
+GitRepository.prototype.authors = async function(collectMessages, ...args) {
   const data = await this.exec(
     'log',
-    `--format=${BREAK_LINE}%at %aE %aN`,
+    `--format=${BREAK_LINE}%at %aE %aN${collectMessages ? COMMIT_START + '%s' + COMMIT_END : ''}`,
     '--find-renames',
     '--no-renames',
     '--numstat',
@@ -138,7 +146,7 @@ GitRepository.prototype.authors = async function(...args) {
   let totalLinesChanged = 0;
 
   authors.forEach(lines => {
-    const { line, filesChanged, linesAdded, linesDeleted, linesChanged } = getStats(lines);
+    const { line, filesChanged, linesAdded, linesDeleted, linesChanged, message } = getStats(lines, collectMessages);
     let [timestamp, ...author] = line.split(' ');
     author = author.join(' ').trim();
     const date = getDate(timestamp);
@@ -173,6 +181,9 @@ GitRepository.prototype.authors = async function(...args) {
     authorMap[author].map[date].linesAdded += linesAdded;
     authorMap[author].map[date].linesDeleted += linesDeleted;
     authorMap[author].map[date].linesChanged += linesChanged;
+    if (collectMessages) {
+      authorMap[author].map[date].message = message;
+    }
 
     authorMap[author].commits++;
     authorMap[author].filesChanged += filesChanged;

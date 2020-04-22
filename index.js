@@ -205,7 +205,7 @@ async function collect(altConfig) {
     try {
       const repositoryName = getRepositoryName(repository);
       const gitRepository = await loadRepository(repository, config);
-      const authors = await gitRepository.authors();
+      const authors = await gitRepository.authors(config.collectMessages);
       if (authors.length > 0) {
         const repositoryAuthorsFileName = `${repositoryName}${DIVIDER}${Date.now().toString()}${STATS_FILE_POSTFIX}`;
         const finalPath = path.resolve(config.statsDir, repositoryAuthorsFileName);
